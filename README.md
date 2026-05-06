@@ -1,4 +1,4 @@
-## 1 Thành viên nhóm
+## 1. Thành viên nhóm
 
 <br>
 
@@ -28,6 +28,6 @@
     <td align="center">23010625</td>
     <td align="center">Trần Văn Nhật</td>
     <td align="center">Thành viên</td>
-    <td align="center"33%</td>
+    <td align="center">33%</td>
 </tr>
 </table>
