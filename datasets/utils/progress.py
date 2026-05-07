@@ -316,7 +316,7 @@ class Progress(Interface):
         - self: class
 
         Đầu ra:
-        - datetime:
+        - datetime: Thời gian hiện tại
 
         Nguồn: TrinhNhuNhat_06052026.
         """
