@@ -31,7 +31,10 @@
     <td align="center">33%</td>
 </tr>
 </table>
-group_9: 18-27-36
 
-Quang 2777777 + 18888888 + 17777777
+## 2. Dữ liệu đề xuất
+
+``
+https://data.mendeley.com/datasets/xkbjx8959c/2
+``
 
