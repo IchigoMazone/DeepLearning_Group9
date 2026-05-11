@@ -100,11 +100,11 @@ class Dataset(Interface):
         self.objects = objects
         self.data_object = [f"data_{obj}" for obj in self.objects]
         self.status = status
-        self.start_object = []
-        self.end_object = []
         self.total_image = 0
         self.length_image = {}
         self.kwargs = kwargs
+        self._images = []
+        self.num_classes = 0
 
     def extract_zip(self, flatten=False, progress=True, default=True, message=False, zip_path=None, extract_path=None, chunk_size=1024 * 64):
 
@@ -254,16 +254,29 @@ class Dataset(Interface):
             )
         ]
     
-    def _get_all_by_folder(self, folder=None):
+    def _get_param_by_folder(self, folder=None, param=[".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff",".webp"]):
 
         if not isinstance(folder, str):
             raise TypeError(
                 f"folder must be str, got {type(folder).__name__}"
             )
         
+        if not isinstance(param, list):
+            raise TypeError(
+                f"param must be str, got {type(param).__name__}"
+            )
+        
+        if not all(isinstance(p, str) for p in param):
+            raise TypeError(
+                f"all items in param must be str"
+            )
+        
         return [
             f"{folder}/{f}"
             for f in os.listdir(folder)
+            if f.endswith(
+                tuple(param)
+            )
         ]
     
     def extract_all(self, progress=True, info=True):
@@ -395,7 +408,369 @@ class Dataset(Interface):
 
         if tracker:
             tracker.finish(end=message)
+    
+    def _get_path_extract_dir_by_param(self, param=None):
 
+        if not isinstance(param, (str, list)):
+            raise TypeError(
+                f"param must be str, got {type(param).__name__}"
+            )
+        
+        if isinstance(param, list) and not all(isinstance(p, str) for p in param):
+            raise ValueError(
+                f"all items in param must be str"
+            )
+        
+        if isinstance(param, list) and not all(p in self.objects for p in param):
+            raise ValueError(
+                f"all items in param must in objects"
+            )
+        
+        if isinstance(param, str) and param not in self.objects:
+            raise ValueError(
+                f"param must in objects"
+            )
+        
+        param = [param] if isinstance(param, str) else param
+
+        return [
+            f"{self.extract_dir}/{obj}"
+            for obj in param
+        ]
+
+    def _get_all_path_by_param(self, param=None):
+
+        """
+        Tác dụng:
+        - Lấy tất cả ảnh của các tập dữ liệu
+
+        Đầu vào:
+        - self: class
+        - param: Là objects muốn lấy dữ liệu
+
+        Đầu ra: 
+        - List[str]]: Danh sách tập ảnh
+
+        Nguồn: TrinhNhuNhat_11052026.
+        """
+
+        if not isinstance(param, (str, list, type(None))):
+            raise TypeError(
+                f"param must be str, got {type(param).__name__}"
+            )
+        
+        if isinstance(param, list) and not all(isinstance(p, str) for p in param):
+            raise ValueError(
+                f"all items in param must be str"
+            )
+        
+        if isinstance(param, list) and not all(p in self.objects for p in param):
+            raise ValueError(
+                f"all items in param must in objects"
+            )
+        
+        if isinstance(param, str) and param not in self.objects:
+            raise ValueError(
+                f"param must in objects"
+            )
+
+        all_path = []
+        folders = self._get_path_extract_dir_by_param(param=self.objects if param is None else param)
+
+        for folder in folders:
+            files = self._get_folder_by_folder(folder=folder)
+            for file in files:
+                file_path = os.path.join(
+                    file, os.path.basename(file)
+                ).replace("\\", "/")
+                all_path.append(file_path)
+
+        return all_path
+    
+    def _get_all_path_image_by_param(self, param=None):
+
+        """
+        Tác dụng:
+        - Lấy tất cả danh sách ảnh 
+
+        Đầu vào:
+        - self: class
+
+        Đầu ra:
+        - List[List[str]]: Danh sách tất cả ảnh trong dataset
+
+        Nguồn: TrinhNhuNhat_11052026
+        """
+
+        if not isinstance(param, (str, list, type(None))):
+            raise TypeError(
+                f"param must be str, got {type(param).__name__}"
+            )
+        
+        if isinstance(param, list) and not all(isinstance(p, str) for p in param):
+            raise ValueError(
+                f"all items in param must be str"
+            )
+        
+        if isinstance(param, list) and not all(p in self.objects for p in param):
+            raise ValueError(
+                f"all items in param must in objects"
+            )
+        
+        if isinstance(param, str) and param not in self.objects:
+            raise ValueError(
+                f"param must in objects"
+            )
+
+        images = []
+        all_path = self._get_all_path_by_param(param=self.objects if param is None else param)
+
+        for path in all_path:
+            image = self._get_param_by_folder(folder=path)
+            images.append(image)           
+        
+        return images
+    
+    def _merge_index(self, param):
+
+        if not isinstance(param, (str, list, type(None))):
+            raise TypeError(
+                f"param must be str, got {type(param).__name__}"
+            )
+        
+        if isinstance(param, list) and not all(isinstance(p, str) for p in param):
+            raise ValueError(
+                f"all items in param must be str"
+            )
+        
+        if isinstance(param, list) and not all(p in self.objects for p in param):
+            raise ValueError(
+                f"all items in param must in objects"
+            )
+
+        images = self._get_all_path_image_by_param(param=param)
+        label = [images[i][0].split("/")[2] for i in range(len(images))]
+        start, point = 0, []
+        target = label[0]
+
+        for index in range(len(images)):
+            if label[index] != target:
+                point.append((start, index - 1))
+                start, target = index, label[index]
+
+        point.append((start, len(images) - 1))
+        return point
+    
+    def _merge_list(self, param=None):
+
+        if not isinstance(param, (str, list, type(None))):
+            raise TypeError(
+                f"param must be str, got {type(param).__name__}"
+            )
+        
+        if isinstance(param, list) and not all(isinstance(p, str) for p in param):
+            raise ValueError(
+                f"all items in param must be str"
+            )
+        
+        if isinstance(param, list) and not all(p in self.objects for p in param):
+            raise ValueError(
+                f"all items in param must in objects"
+            )
+
+        points = self._merge_index(param=param)
+        image_before = self._get_all_path_image_by_param(param=param)
+        image_after = []
+
+        for point in points:
+            start, end = point
+            result = []
+            for index in range(start, end + 1):
+                result += image_before[index]
+            image_after.append(result)
+
+        return image_after
+    
+    def _filter_list(self, param=None, status=None):
+
+        if not isinstance(param, (str, list, type(None))):
+            raise TypeError(
+                f"param must be str, got {type(param).__name__}"
+            )
+
+        if isinstance(param, list) and not all(isinstance(p, str) for p in param):
+            raise ValueError(
+                f"all items in param must be str"
+            )
+        
+        if isinstance(param, list) and not all(p in self.objects for p in param):
+            raise ValueError(
+                f"all items in param must in objects"
+            )
+        
+        if not isinstance(status, (str, list, type(None))):
+            raise TypeError(
+                f"status must be str, got {type(param).__name__}"
+            )
+        
+        if isinstance(status, list) and not all(isinstance(p, str) for p in status):
+            raise ValueError(
+                f"all items in status must be str"
+            )
+        
+        if isinstance(status, str) and status not in self.status:
+            raise ValueError(
+                f"invalid status '{status}'. must be one of: {self.status}"
+            )
+        
+        if isinstance(status, list) and not all(state in self.status for state in status):
+            raise ValueError(
+                f"invalid status list {status}. all values must be in: {self.status}"
+            )    
+
+        images_before = self._get_all_path_image_by_param(param=param)
+        label = [images_before[i][0].split("/")[3] for i in range(len(images_before))]
+        image_after = []
+
+        for index in range(len(images_before)):
+            if isinstance(status, str) and label[index] == status:
+                image_after.append(images_before[index])
+            if isinstance(status, list) and label[index] in status:
+                image_after.append(images_before[index])
+
+        return image_after
+    
+    def _merge_status(self, param=None, status=None):
+
+        if not isinstance(param, (str, list, type(None))):
+            raise TypeError(
+                f"param must be str, got {type(param).__name__}"
+            )
+        
+        if isinstance(param, list) and not all(isinstance(p, str) for p in param):
+            raise ValueError(
+                f"all items in param must be str"
+            )
+        
+        if isinstance(param, list) and not all(p in self.objects for p in param):
+            raise ValueError(
+                f"all items in param must in objects"
+            )
+        
+        if not isinstance(status, (str, list, type(None))):
+            raise TypeError(
+                f"status must be str, got {type(param).__name__}"
+            )
+        
+        if isinstance(status, list) and not all(isinstance(p, str) for p in status):
+            raise ValueError(
+                f"all items in status must be str"
+            )
+        
+        if isinstance(status, str) and status not in self.status:
+            raise ValueError(
+                f"invalid status '{status}'. must be one of: {self.status}"
+            )
+        
+        if isinstance(status, list) and not all(state in self.status for state in status):
+            raise ValueError(
+                f"invalid status list {status}. all values must be in: {self.status}"
+            )
+
+        images_before = self._filter_list(param=param, status=status)
+        data = self._index_status(param=param, status=status)
+        image_after = [[] for _ in range(len(data))]
+        
+        for x, value in enumerate(data.values()):
+            for y in value:
+                image_after[x] += images_before[y]
+            
+        return image_after
+    
+    def _index_status(self, param=None, status=None):
+        images_before = self._filter_list(param=param, status=status)
+        labels = [images_before[i][0].split("/")[3] for i in range(len(images_before))]
+        data = {}
+
+        for index, label in enumerate(labels, start=0):
+            if label in data:
+                data[label].append(index)
+            else:
+                data[label] = []
+                data[label].append(index)
+
+        return data
+
+    def fit(self, param=None, merge=False, status=None):
+
+        """
+        Tác dụng:
+        - Chia dataset theo điều kiện
+        
+        Đầu vào: 
+        - self: class
+        - param: Là objects muốn lấy dữ liệu
+
+        Đầu ra:
+        - void:
+
+        Nguồn: TrinhNhuNhat_11052026.
+        """
+
+        if not isinstance(param, (str, list, type(None))):
+            raise TypeError(
+                f"param must be str, got {type(param).__name__}"
+            )
+        
+        if not isinstance(merge, bool):
+            raise TypeError(
+                f"merge must be str, got {type(merge).__name__}"
+            )
+        
+        if isinstance(param, list) and not all(isinstance(p, str) for p in param):
+            raise ValueError(
+                f"all items in param must be str"
+            )
+        
+        if isinstance(param, list) and not all(p in self.objects for p in param):
+            raise ValueError(
+                f"all items in param must in objects"
+            )
+        
+        if not isinstance(status, (str, list, type(None))):
+            raise TypeError(
+                f"status must be str, got {type(param).__name__}"
+            )
+        
+        if isinstance(status, list) and not all(isinstance(p, str) for p in status):
+            raise ValueError(
+                f"all items in status must be str"
+            )
+        
+        if isinstance(status, str) and status not in self.status:
+            raise ValueError(
+                f"invalid status '{status}'. must be one of: {self.status}"
+            )
+        
+        if isinstance(status, list) and not all(state in self.status for state in status):
+            raise ValueError(
+                f"invalid status list {status}. all values must be in: {self.status}"
+            )
+
+        images = (
+            (self._merge_status(param=param, status=status) if merge else self._filter_list(param=param, status=status))
+            if status is not None
+            else (
+                self._merge_list(param=param) 
+                if merge 
+                else self._get_all_path_image_by_param(param=param)
+            )
+        )
+
+        self.num_classes = len(images)
+        
+        return [len(image) for image in images]
+        
 
     @property
     def get_params(self):
@@ -425,6 +800,7 @@ class Dataset(Interface):
             "objects": self.objects,
             "status": self.status,
             "total_image": self.total_image,
+            "num_classes": self.num_classes
         }
 
         infos.update(items)
@@ -441,31 +817,41 @@ if __name__ == "__main__":
         status=["Rotten", "Fresh", "Formalin-mixed"]
     )
 
-    dataset.extract_zip(
-        flatten=False,
-        progress=True,
-        default=True,
-        message=False,
-        chunk_size=1024 * 64
-    )
+    # dataset.extract_zip(
+    #     flatten=False,
+    #     progress=True,
+    #     default=True,
+    #     message=False,
+    #     chunk_size=1024 * 64
+    # )
 
-    dataset.extract_all(
-        progress=True,
-        info=False
-    )
+    # dataset.extract_all(
+    #     progress=True,
+    #     info=False
+    # )
 
+    # Xóa file zip sau khi giải nén xong
     dataset.clear_folder(
         folder=os.path.dirname(dataset.zip_path),
         mode="file",
         exclude=["__init__.py"]
     )
 
+    # Xóa folder sau khi giải nén xong 
     dataset.clear_folder(
         folder=dataset.extract_dir,
         mode="folder",
         exclude=["__init__.py"]
     )
 
-    print("Xóa thành công dữ liệu.")
+    # print("Xóa thành công dữ liệu.")
 
-
+    # print(dataset.fit(merge=False, param=None, status=["Rotten", "Fresh", "Formalin-mixed"]))
+    # print(dataset.fit(merge=True, param=None, status=["Rotten", "Fresh"]))
+    # print(dataset.fit(merge=True, param=None, status=["Rotten"]))
+    # print(dataset.fit(merge=True, param=["Orange", "Mango"], status=None))
+    # print(dataset.fit(merge=False, param=["Orange", "Mango"], status=None))
+    # print(dataset.fit(merge=True, param=["Orange", "Mango"], status=["Rotten", "Fresh", "Formalin-mixed"]))
+    # print(dataset.fit(merge=True, param=None, status=None))
+    # # print(dataset.fit(merge=False, param=None, status=None))
+    # print(dataset.num_classes)
