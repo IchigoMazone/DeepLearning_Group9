@@ -1,12 +1,12 @@
 from datasets.utils.progress import Progress
 from datasets.utils.interface import Interface
 from zipfile import ZipFile
+import pandas as pd
 import shutil
-import random
 import os
 
 class Dataset(Interface):
-    
+
     def __init__(self, zip_path=None, extract_dir=None, dataset_dir=None, objects=None, status=None, width=30, **kwargs):
 
         """
@@ -105,6 +105,8 @@ class Dataset(Interface):
         self.kwargs = kwargs
         self._images = []
         self.num_classes = 0
+        self.name_classes = 0
+        self.label = None
 
     def extract_zip(self, flatten=False, progress=True, default=True, message=False, zip_path=None, extract_path=None, chunk_size=1024 * 64):
 
@@ -114,10 +116,10 @@ class Dataset(Interface):
 
         Đầu vào: 
         - self: class
-        - flatten: Có gộp tất cả file ở các folder nếu có về chung một không ?
-        - progress: Có hiển thị thanh tiến trình không ?
-        - end: Có hiện thông báo khi hoàn thành tiến trình không ?
-        - chunk_size: Kích thước của từng chunk_size hay đơn vị của tiến trình
+        - flatten[bool]: Có gộp tất cả file ở các folder nếu có về chung một không ?
+        - progress[bool]: Có hiển thị thanh tiến trình không ?
+        - end[bool]: Có hiện thông báo khi hoàn thành tiến trình không ?
+        - chunk_size[int]: Kích thước của từng chunk_size hay đơn vị của tiến trình
 
         Đầu ra: 
         - void: Trả về folder đã unzip ở self.extract_dir
@@ -215,10 +217,11 @@ class Dataset(Interface):
         -Lấy các đường dẫn đến các thư mục
 
         Đầu vào:
-        - self
+        - self: class
+        - folder[str]: Thu muc chi dinh
 
         Đầu ra:
-        - list[str]
+        - list[str]: Tra ve cac folder con trong folder
 
         Nguồn: TrinhNhuNhat_07052026.
         """
@@ -241,6 +244,20 @@ class Dataset(Interface):
     
     def _get_file_by_folder(self, folder=None):
 
+        """
+        Tac dung:
+        - Tra ve danh sach file trong thu muc
+
+        Dau vao:
+        - self: class
+        - folder[str]: Thu muc chi dinh
+
+        Dau ra:
+        - list[str]: Tra ve danh sach file trong thu muc
+
+        Nguon: TrinhNhuNhat_08052026.
+        """
+
         if not isinstance(folder, str):
             raise TypeError(
                 f"folder must be str, got {type(folder).__name__}"
@@ -255,6 +272,20 @@ class Dataset(Interface):
         ]
     
     def _get_param_by_folder(self, folder=None, param=[".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff",".webp"]):
+
+        """
+        Tac dung:
+        - Tra ve danh sach anh trong folder
+
+        Dau vao:
+        - folder[str]: Thu muc chi dinh 
+        - param[str|list[str]]: Cac kieu du lieu chon loc
+
+        Dau ra:
+        - list[str]: Tra ve danh sach anh trong thu muc 
+
+        Nguon: TrinhNhuNhat_08052026.
+        """
 
         if not isinstance(folder, str):
             raise TypeError(
@@ -280,6 +311,21 @@ class Dataset(Interface):
         ]
     
     def extract_all(self, progress=True, info=True):
+
+        """
+        Tac dung:
+        - Giai nen tat ca cac file trong thu muc
+
+        Dau vao:
+        - self: class
+        - progress[bool]: Co hien thi tien trinh hay khong?
+        - info[bool]: Co hien thi thong bao hay khong?
+
+        Dau ra: 
+        - void: Xoa thu muc chi dinh
+
+        Nguon: TrinhNhuNhat_08052026.
+        """
 
         if not isinstance(progress, bool):
             raise TypeError(
@@ -330,6 +376,24 @@ class Dataset(Interface):
             )
 
     def clear_folder(self, folder=None, mode="all", exclude=None, progress=True, message=False):
+
+        """
+        Tac dung: 
+        - Ham xoa file, folder tuy chinh
+
+        Dau vao:
+        - self: class
+        - folder[None|str]: Duong dan toi folder can xoa
+        - mode["file"|"folder"|"all"]: Lua chon che do de xoa
+        - exclude[str|list[str]]: Danh sach cac file khong bi xoa
+        - progress[bool]: Co hien thi thanh tien trinh khong?
+        - message[bool]: Co hien thi thong bao sau tien trinh khong?
+
+        Dau ra:
+        - void: 
+
+        Nguon: TrinhNhuNhat_08052026.
+        """
 
         if not isinstance(folder, str):
             raise TypeError(
@@ -446,7 +510,7 @@ class Dataset(Interface):
 
         Đầu vào:
         - self: class
-        - param: Là objects muốn lấy dữ liệu
+        - param[str|list[str]]: Là objects muốn lấy dữ liệu
 
         Đầu ra: 
         - List[str]]: Danh sách tập ảnh
@@ -495,6 +559,7 @@ class Dataset(Interface):
 
         Đầu vào:
         - self: class
+        - param[str|list[str]]: La doi tuong duoc lua chon
 
         Đầu ra:
         - List[List[str]]: Danh sách tất cả ảnh trong dataset
@@ -531,7 +596,21 @@ class Dataset(Interface):
         
         return images
     
-    def _merge_index(self, param):
+    def _merge_index(self, param=None):
+
+        """
+        Tac dung:
+        - Tra ve diem la dau va cuoi cua cac class
+
+        Dau vao:
+        - self: class
+        - param[str|list[str]]: La doi tuong su dung
+
+        Dau ra:
+        - point[list[tuple]]: Tra ve cac diem la dau va cuoi cua class
+
+        Nguon: TrinhNhuNhat_11052026.
+        """
 
         if not isinstance(param, (str, list, type(None))):
             raise TypeError(
@@ -563,6 +642,20 @@ class Dataset(Interface):
     
     def _merge_list(self, param=None):
 
+        """
+        Tac dung:
+        - Tra ve danh sach anh da gop theo dieu kien
+
+        Dau vao: 
+        - self: class
+        - param[str | list[str]]: La doi tuong lua chon
+
+        Dau ra:
+        - image_after[list[list[str]]]: Tra ve danh sach anh da gop theo dieu kien param
+
+        Nguon: TrinhNhuNhat_11052026.
+        """
+
         if not isinstance(param, (str, list, type(None))):
             raise TypeError(
                 f"param must be str, got {type(param).__name__}"
@@ -592,6 +685,22 @@ class Dataset(Interface):
         return image_after
     
     def _filter_list(self, param=None, status=None):
+
+        """
+        Tac dung:
+        - Tra ve danh sach anh tra ve theo dieu kien
+
+        Dau vao: 
+        - self: class
+        - merge[bool]: Thuoc tinh co quyet dinh gop status hoac object theo object hoac status
+        - param[str | list[str]]: La doi tuong lua chon
+        - status[str | list[str]]: Trang thai lua chon
+
+        Dau ra:
+        - image_after[list[list[str]]]: Tra ve danh sach anh da loc theo dieu kien
+
+        Nguon: TrinhNhuNhat_11052026.
+        """
 
         if not isinstance(param, (str, list, type(None))):
             raise TypeError(
@@ -642,6 +751,21 @@ class Dataset(Interface):
     
     def _merge_status(self, param=None, status=None):
 
+        """
+        Tac dung:
+        - Tra ve danh sach sau gop dieu kien
+
+        Dau vao: 
+        - self: class
+        - param[str | list[str]]: La doi tuong lua chon
+        - status[str | list[str]]: Trang thai lua chon
+
+        Dau ra:
+        - image_after[list[list[str]]]: Tra ve danh sach anh da gop theo dieu kien status
+
+        Nguon: TrinhNhuNhat_11052026.
+        """
+
         if not isinstance(param, (str, list, type(None))):
             raise TypeError(
                 f"param must be str, got {type(param).__name__}"
@@ -688,6 +812,22 @@ class Dataset(Interface):
         return image_after
     
     def _index_status(self, param=None, status=None):
+
+        """
+        Tac dung: 
+        - Tra ve dia chi cua cac class
+
+        Dau vao: 
+        - self: class
+        - param[str | list[str]]: La doi tuong lua chon
+        - status[str | list[str]]: Trang thai lua chon
+
+        Dau ra:
+        - data[dict[str:list[int]]]: Luu tru dia chi cua cac class
+
+        Nguon: TrinhNhuNhat_12052026.
+        """
+
         images_before = self._filter_list(param=param, status=status)
         labels = [images_before[i][0].split("/")[3] for i in range(len(images_before))]
         data = {}
@@ -704,17 +844,19 @@ class Dataset(Interface):
     def fit(self, param=None, merge=False, status=None):
 
         """
-        Tác dụng:
-        - Chia dataset theo điều kiện
+        Tac dung:
+        - Chia dataset theo đieu kien
         
-        Đầu vào: 
+        Dau vao: 
         - self: class
-        - param: Là objects muốn lấy dữ liệu
+        - merge[bool]: Thuoc tinh co quyet dinh gop status hoac object theo object hoac status
+        - param[str | list[str]]: La doi tuong lua chon
+        - status[str | list[str]]: Trang thai lua chon
 
-        Đầu ra:
-        - void:
+        Đau ra
+        - void: Khoi tao cac tham so luu tru duong anh, so class, ten class
 
-        Nguồn: TrinhNhuNhat_11052026.
+        Nguon: TrinhNhuNhat_11052026.
         """
 
         if not isinstance(param, (str, list, type(None))):
@@ -767,10 +909,144 @@ class Dataset(Interface):
             )
         )
 
-        self.num_classes = len(images)
+        self.num_classes, self.name_classes = self._label_images(merge=merge, param=param, status=status)
+        self._images = images
+
+    @property
+    def _label_class(self):
+
+        """
+        Tac dung:
+        - Tra ve duong dan va nhan cua anh
+
+        Dau vao:
+        - self: class
+
+        Dau ra: 
+        images[list[list[str]]]: Tra ve danh sach duong dan den tung file anh
+        label[dict]: Nhan so va nhan chu
+
+        Nguon: TrinhNhuNhat_12052026.
+        """
+
+        label = {}
+        dataset = {}
+        length_test = 3
+        keys = self.name_classes
+        images = self._images
+        keys_path = [key.replace("_", "/") for key in keys]
+
+        for index in range(self.num_classes):
+            key = keys[index]
+            label[key] = index
         
-        return [len(image) for image in images]
+        for index, image in enumerate(images, start=0):
+            count, keys = 0, None
+            for test in [image[0], image[len(image) // 2], image[-1]]:
+                for key in keys_path:
+                    if key in test: 
+                        count += 1
+                        keys = key
+
+            if count == length_test:
+                dataset[keys] = index
+                keys_path.remove(keys)
+
+        return images, dataset
+    
+    def transform(self, name_file="dataset.csv", index=False, end=False):
+
+        """
+        Tac dung:
+        - Luu file dinh dang .csv cho dataset
+
+        Dau vao:
+        - self: class
+        - name_file[str]: Ten file luu tru du lieu dataset
+        - index[bool]: Co danh dau so dong cho file khong?
+        - end[bool]: Co hien thong bao khi ket thuc khong?
+
+        Dau ra:
+        - void: Tra ve file luu tru o thu muc chi dinh
+
+        Nguon: TrinhNhuNhat_12052026.
+        """
+
+        image_path, label = self._label_class
+        path_name = self.dataset_dir
+        self.label = label
+        data = []
+
+        os.makedirs(path_name, exist_ok=True)
+        save_path = f"{path_name}/{name_file}"
         
+        if os.path.exists(save_path):
+            raise FileExistsError(f"file already exists: {save_path}")
+        
+        items = list(zip(image_path, label.items()))
+        progress = Progress(desc="Building CSV").start(total=len(items))
+
+        for images, (key, value) in items:
+            for image in images:
+                data.append({
+                    "image_path": image,
+                    "label": value,
+                    "class_name": key
+                })
+            progress.update(1)
+        progress.finish(end=end)
+
+        df = pd.DataFrame(data)
+        df.to_csv(f"{path_name}/{name_file}", index=index)
+    
+    def _label_images(self, merge=None, param=None, status=None):
+        
+        """
+        Tác dụng:
+        - Tra ve so class va ten class
+
+        Dau vao: 
+        - self: class
+        - merge[bool]: Thuoc tinh co quyet dinh gop status hoac object theo object hoac status
+        - param[str | list[str]]: La doi tuong lua chon
+        - status[str | list[str]]: Trang thai lua chon
+
+        Dau ra:
+        - num_classes[int]: So class tu bo dieu kien
+        - name_classes[list[str]]: Ten class tu bo dieu kien
+
+        Nguon: TrinhNhuNhat_12052026.
+        """
+
+        default_status = self.status
+        default_param = self.objects
+        num_classes = 0
+        name_classes = None
+
+        param_before = param
+        status_before = status
+        param_after = default_param if param is None else param
+        status_after = default_status if status is None else status
+
+        if not merge: 
+            num_classes = len(param_after) * len(status_after)
+            name_classes = [f"{param}_{status}" for param in param_after for status in status_after]
+
+        else:
+            if param_before is None and status_before is None:
+                num_classes = len(param_after)
+                name_classes = [f"{param}" for param in param_after]
+            elif param_before is None and status_before is not None:
+                num_classes = len(status_after)
+                name_classes = [f"{status}" for status in status_after]
+            elif param_before is not None and status_before is None:
+                num_classes = len(param_before)
+                name_classes = [f"{param}" for param in param_after]
+            else:
+                num_classes = len(status_after)
+                name_classes = [f"{status}" for status in status_after]
+
+        return num_classes, name_classes
 
     @property
     def get_params(self):
@@ -783,7 +1059,7 @@ class Dataset(Interface):
         - self: class
 
         Đầu ra:
-        - void:
+        - infos[dict]: Tra ve cac thong so tu class hien tai
 
         Nguồn: TrinhNhuNhat_07052026.
         """
@@ -812,23 +1088,23 @@ if __name__ == "__main__":
     dataset = Dataset(
         zip_path="datasets/raw/Augmented-Resized Image.zip",
         extract_dir="datasets/processed",
-        dataset_dir="datasets/dataset",
+        dataset_dir="project-middle/dataset",
         objects=["Orange", "Mango", "Grape", "Banana"],
         status=["Rotten", "Fresh", "Formalin-mixed"]
     )
 
-    # dataset.extract_zip(
-    #     flatten=False,
-    #     progress=True,
-    #     default=True,
-    #     message=False,
-    #     chunk_size=1024 * 64
-    # )
+    dataset.extract_zip(
+        flatten=False,
+        progress=True,
+        default=True,
+        message=False,
+        chunk_size=1024 * 64
+    )
 
-    # dataset.extract_all(
-    #     progress=True,
-    #     info=False
-    # )
+    dataset.extract_all(
+        progress=True,
+        info=False
+    )
 
     # Xóa file zip sau khi giải nén xong
     dataset.clear_folder(
@@ -844,14 +1120,24 @@ if __name__ == "__main__":
         exclude=["__init__.py"]
     )
 
-    # print("Xóa thành công dữ liệu.")
-
-    # print(dataset.fit(merge=False, param=None, status=["Rotten", "Fresh", "Formalin-mixed"]))
-    # print(dataset.fit(merge=True, param=None, status=["Rotten", "Fresh"]))
-    # print(dataset.fit(merge=True, param=None, status=["Rotten"]))
-    # print(dataset.fit(merge=True, param=["Orange", "Mango"], status=None))
-    # print(dataset.fit(merge=False, param=["Orange", "Mango"], status=None))
-    # print(dataset.fit(merge=True, param=["Orange", "Mango"], status=["Rotten", "Fresh", "Formalin-mixed"]))
-    # print(dataset.fit(merge=True, param=None, status=None))
-    # # print(dataset.fit(merge=False, param=None, status=None))
-    # print(dataset.num_classes)
+    dataset.fit(merge=False, param=None, status=None)
+    dataset.transform()
+    dataset.fit(merge=True, param=None, status=None)
+    dataset.transform(name_file="dataset.csv", index=False)
+    dataset.fit(merge=False, param=None, status=["Rotten", "Fresh", "Formalin-mixed"])
+    dataset.transform()
+    dataset.fit(merge=True, param=None, status=["Rotten", "Fresh"])
+    dataset.transform()
+    dataset.fit(merge=True, param=None, status=["Rotten"])
+    dataset.transform()
+    dataset.fit(merge=True, param=["Orange", "Mango"], status=None)
+    dataset.transform()
+    dataset.fit(merge=False, param=["Orange", "Mango"], status=None)
+    dataset.transform()
+    dataset.fit(merge=True, param=["Orange", "Mango"], status=["Rotten", "Fresh", "Formalin-mixed"])
+    dataset.transform()
+    dataset.fit(merge=True, param=None, status=None)
+    dataset.transform()
+    dataset.fit(merge=False, param=["Mango"], status=None)
+    dataset.transform()
+    

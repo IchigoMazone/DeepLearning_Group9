@@ -278,7 +278,7 @@ class Progress(Interface):
         - self: class
 
         Đầu ra:
-        - void:
+        - void: Tra ve cac truong thong tin tu class hien tai
 
         Nguồn: TrinhNhuNhat_06052026.
         """
@@ -316,7 +316,7 @@ class Progress(Interface):
         - self: class
 
         Đầu ra:
-        - datetime: Thời gian hiện tại
+        - datetime[d/m/y-h/m/s]: Thời gian hiện tại
 
         Nguồn: TrinhNhuNhat_06052026.
         """
