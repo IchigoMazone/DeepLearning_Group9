@@ -1,0 +1,12 @@
+IchigoMazone/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+build/
+.env
+*.zip
+*.mp4
+*.pt
+*.pth
+*.onnx
