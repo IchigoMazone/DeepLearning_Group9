@@ -445,7 +445,7 @@ class Dataset(Interface):
 
         if progress:
             tracker = Progress(
-                desc="Removing",
+                desc="RemoveData",
                 unit="item",
                 width=30,
             ).start(total=len(items))
@@ -984,14 +984,14 @@ class Dataset(Interface):
             raise FileExistsError(f"file already exists: {save_path}")
         
         items = list(zip(image_path, label.items()))
-        progress = Progress(desc="Building CSV").start(total=len(items))
+        progress = Progress(desc="DatasetCSV").start(total=len(items))
 
         for images, (key, value) in items:
             for image in images:
                 data.append({
                     "image_path": image,
                     "label": value,
-                    "class_name": key
+                    "class_name": key.replace("/", "_")
                 })
             progress.update(1)
         progress.finish(end=end)
