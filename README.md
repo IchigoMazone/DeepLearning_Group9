@@ -32,6 +32,7 @@
 </tr>
 </table>
 
+
 ## 2. Dữ liệu đề xuất
 
 ```bash
