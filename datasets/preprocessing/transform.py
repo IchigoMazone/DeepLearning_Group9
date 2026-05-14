@@ -1,5 +1,5 @@
 from torch.utils.data import Dataset
-from midterm.datasets.data import train_val_test_split
+from datasets.preprocessing.data import train_val_test_split
 from torchvision import transforms
 from collections import Counter
 from PIL import Image
