@@ -26,19 +26,19 @@ class Progress(Interface):
 
         Đầu vào:
         - self: class
-        - desc: 
-        - unit: 
-        - unit_scale: 
-        - timezone:
-        - ascii: 
-        - mininterval: 
-        - dynamic_ncols: 
-        - refresh:
-        - width: 
-        - **kwargs:
+        - desc[str]: Mo ta tien trinh hien thi phia truoc nhanh
+        - unit[str]: Don vi don luong
+        - unit_scale[bool]: Tu dong scale don vi
+        - timezone[str]: Mui gio hien thi thoi gian
+        - ascii[str]: Ki hieu dung de ve thanh tien trinh
+        - mininterval[int]: Thoi gian toi thieu giua hai lan cap nhat
+        - dynamic_ncols[bool]: Tu dong dieu chinh do rong theo terminal
+        - refresh[bool]: Tu dong refresh sau khi set_postfix
+        - width[int]: Do rong thanh tien trinh
+        - **kwargs[dict]: Cac tham so bo sung cho tqdm
 
         Đầu ra:
-        - void:
+        - void: khong tra ve
 
         Nguồn: TrinhNhuNhat_06052026.
         """
@@ -123,13 +123,13 @@ class Progress(Interface):
 
         Đầu vào:
         - self: class
-        - total: 
-        - bar_format: 
-        - ascii: 
-        - unit:
+        - total[float]: Tong so buoc cua tien trinh
+        - bar_format[str]: Dinh dang hien thi thanh tien trinh
+        - ascii[str]: Ki hieu dung de ve thanh tien trinh
+        - unit[str]: Don vi do luong
 
         Đầu ra:
-        - void:
+        - void: Khong tra ve
 
         Nguồn: TrinhNhuNhat_06052026.
         """
@@ -189,10 +189,10 @@ class Progress(Interface):
 
         Đầu vào:
         - self: class
-        - amount: 
+        - amount[float]: So buoc can cap nhat them
 
         Đầu ra:
-        - void:
+        - void: Khong tra ve
 
         Nguồn: TrinhNhuNhat_06052026.
         """
@@ -208,11 +208,11 @@ class Progress(Interface):
 
         Đầu vào:
         - self: class
-        - refresh: 
-        - **kwargs: 
+        - refresh[bool]: Tu dong refresh sau khi cap nhat
+        - **kwargs[dict]: Cac metrics can hien thi
 
         Đầu ra:
-        - void:
+        - void: Khong tra ve
 
         Nguồn: TrinhNhuNhat_06052026.
         """
@@ -236,12 +236,12 @@ class Progress(Interface):
 
         Đầu vào:
         - self: class
-        - desc: 
-        - content: 
-        - end: 
+        - desc[str]: Mo ta tien trinh hien thi phia truoc nhanh
+        - content[str]: Noi dung thong bao
+        - end[bool]: Hien thi thong bao ket thuc hay khong?
 
         Đầu ra:
-        - void:
+        - void: Khong tra ve
 
         Nguồn: TrinhNhuNhat_06052026.
         """
@@ -278,7 +278,7 @@ class Progress(Interface):
         - self: class
 
         Đầu ra:
-        - void: Tra ve cac truong thong tin tu class hien tai
+        - [dict]: Tra ve cac truong thong tin tu class hien tai
 
         Nguồn: TrinhNhuNhat_06052026.
         """
