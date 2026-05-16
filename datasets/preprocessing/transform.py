@@ -16,14 +16,47 @@ class TransformDataset(Dataset):
     Nguon: TrinhNhuNhat_13-14052026.
     """
 
-    def __init__(self, root=None, transform=None):
+    def __init__(self, root=None, datasets=None, transform=None):
+        
+        if root is None and datasets is None:
+            raise ValueError("Either 'roor' (file path) or 'datasets' (DataFrame) must be provided")
 
-        if not os.path.exists(root):
-            raise FileExistsError(f"file already exists: {root}")
+        if datasets is not None:
+            self.image_paths, self.labels, self.class_name = self._load_dataframe(datasets=datasets)
+            self.root = None
 
-        self.image_paths, self.labels, self.class_name = self._load_dataset(csv_path=root)
-        self.root = root
+        elif root is not None:
+            if not os.path.exists(root):
+                raise FileExistsError(f"file already exists: {root}")
+            
+            self.image_paths, self.labels, self.class_name = self._load_dataset(csv_path=root)
+            self.root = root
+        
         self.transform = transform
+
+    def _load_dataframe(self, datasets):
+
+        """
+        Tác dụng:
+        - Hàm đọc dữ liệu từ dataframe
+
+        Đầu vào:
+        - self: class
+        - datasets[DataFrame]: Dữ liệu đầu vào
+
+        Đầu ra:
+        - list[str]: Trả về image_path
+        - list[str]: Trả về label
+        - list[str]: Trả về class_name
+
+        Nguồn: TrinhNhuNhat_16052025.
+        """
+
+        return (
+            datasets["image_path"].tolist(),
+            datasets["label"].tolist(),
+            datasets["class_name"].tolist()
+        )
 
     def _load_dataset(self, csv_path=None):
 
@@ -107,7 +140,7 @@ class TransformDataset(Dataset):
         with Image.open(image) as img:
             return img.convert("RGB")
     
-    def _denormalize(self, image):
+    def _denormalize(self, image, mean=0.5, std=0.5):
 
         """
         Tac dung:
@@ -123,7 +156,7 @@ class TransformDataset(Dataset):
         Nguon: TrinhNhuNhat_14052026.
         """
 
-        return (image * 0.5) + 0.5 
+        return (image * std) + mean 
     
     def _convert_to_jpg(self, input_path, output_path=None, quality=95):
 
