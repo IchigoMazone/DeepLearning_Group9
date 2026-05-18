@@ -36,6 +36,6 @@
 ## 2. Dữ liệu đề xuất
 
 ```bash
-https://data.mendeley.com/datasets/xkbjx8959c/2
+[https://data.mendeley.com/datasets/xkbjx8959c/2](https://www.kaggle.com/datasets/kritikseth/fruit-and-vegetable-image-recognition)
 ```
 
