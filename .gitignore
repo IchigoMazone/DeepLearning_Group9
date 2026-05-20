@@ -14,3 +14,23 @@ build/
 *.pt
 *.pth
 *.onnx
+
+# Virtual Environment
+Sun65/
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# IDE
+.idea/
+.vscode/
+
+# Dataset
+datasets/
+
+# Model weights
+*.pth
+*.pt
