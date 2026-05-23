@@ -314,7 +314,7 @@ if __name__ == "__main__":
     #     download=False,
     #     random_state=42,
     #     active=True,
-    #     transformX=transforms,g
+    #     transformX=transforms,
     #     transformY=transforms,
     #     transformZ=transforms,
     # )

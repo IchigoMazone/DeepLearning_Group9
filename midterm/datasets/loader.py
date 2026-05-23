@@ -7,53 +7,53 @@ if __name__ == "__main__":
     dataset = Dataset(
         zip_path="datasets/raw/Fruits.zip",
         extract_dir="datasets/processed",
-        dataset_dir="project-middle/datasets",
+        dataset_dir="midterm/datasets",
         objects=["Fruits"],
-        status=["apple", "banana", "carrot", "corn", "cucumber", "grapes", "lemon", "orange", "pineapple", "watermelon"]
+        status=["banana", "cucumber", "grapes", "kiwi", "mango", "orange", "pear", "pineapple", "pomegranate", "watermelon"]
     )
 
     # Giai nen thu muc goc
-    # dataset.extract_zip(
-    #     flatten=False,
-    #     progress=True,
-    #     default=True,
-    #     message=False,
-    #     chunk_size=1024 * 64
-    # )
+    dataset.extract_zip(
+        flatten=False,
+        progress=True,
+        default=True,
+        message=False,
+        chunk_size=1024 * 64
+    )
 
     # Giai nen cac thu muc con
-    # dataset.extract_all(
-    #     progress=True,
-    #     info=False
-    # )
+    dataset.extract_all(
+        progress=True,
+        info=False
+    )
 
     # Khoi tao dieu kien voi gop 4 loai trai cay voi ca 3 truong hop
-    # dataset.fit(
-    #     merge=False, 
-    #     param=None, 
-    #     status=None
-    # )
+    dataset.fit(
+        merge=False, 
+        param=None, 
+        status=None
+    )
 
     # Khoi tao file dataset
-    # dataset.transform(
-    #     name_file="dataset.csv",
-    #     index=False,
-    #     end=False
+    dataset.transform(
+        name_file="dataset.csv",
+        index=False,
+        end=False
+    )
+
+    # # Xoa file khong su dung den
+    # dataset.clear_folder(
+    #     folder=os.path.dirname(dataset.zip_path),
+    #     mode="file",
+    #     exclude=["__init__.py"]
     # )
 
-    # Xoa file khong su dung den
-    dataset.clear_folder(
-        folder=os.path.dirname(dataset.zip_path),
-        mode="file",
-        exclude=["__init__.py"]
-    )
-
     # Xoa folder de upload code len github
-    dataset.clear_folder(
-        folder=dataset.extract_dir,
-        mode="folder",
-        exclude=["__init__.py"]
-    )
+    # dataset.clear_folder(
+    #     folder=dataset.extract_dir,
+    #     mode="folder",
+    #     exclude=["__init__.py"]
+    # )
 
 
 
