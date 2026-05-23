@@ -1,80 +1,21 @@
-import numpy as np
-
-from midterm.code.im2col import col2im_nhwc
-
-
-def relu_backward(dA, Z):
-    dZ = np.array(dA, copy=True)
-    dZ[Z <= 0] = 0
-    return dZ
-
-
-def dense_backward(dZ, cache):
-    A_prev, W, _ = cache
-    m = A_prev.shape[0]
-    dW = np.dot(A_prev.T, dZ) / m
-    db = np.sum(dZ, axis=0, keepdims=True) / m
-    dA_prev = np.dot(dZ, W.T)
-    return dA_prev, dW, db
-
-
-def global_avg_pool_backward(dA, cache):
-    m, H, W, C = cache
-    return np.ones((m, H, W, C), dtype=np.float32) * dA[:, None, None, :] / (H * W)
-
-
-def max_pool_backward(dA, cache):
-    A_prev, f, stride = cache
-    m, _, _, C_prev = A_prev.shape
-    _, H, W, _ = dA.shape
-    dA_prev = np.zeros_like(A_prev, dtype=np.float32)
-
-    for i in range(m):
-        for h in range(H):
-            vert_start = h * stride
-            vert_end = vert_start + f
-            for w in range(W):
-                horiz_start = w * stride
-                horiz_end = horiz_start + f
-                for c in range(C_prev):
-                    window = A_prev[i, vert_start:vert_end, horiz_start:horiz_end, c]
-                    mask = window == np.max(window)
-                    dA_prev[i, vert_start:vert_end, horiz_start:horiz_end, c] += mask * dA[i, h, w, c]
-
-    return dA_prev
-
-
-def conv_backward(dZ, cache):
-    A_prev, W, _, stride, pad, X_col = cache
-    m, _, _, C_prev = A_prev.shape
-    f, _, _, C_out = W.shape
-    _, H_out, W_out, _ = dZ.shape
-
-    dZ_col = dZ.reshape(m * H_out * W_out, C_out)
-    W_col = W.reshape(f * f * C_prev, C_out)
-
-    dW_col = np.dot(X_col.T, dZ_col) / m
-    dW = dW_col.reshape(W.shape).astype(np.float32)
-    db = (np.sum(dZ_col, axis=0).reshape(1, 1, 1, C_out) / m).astype(np.float32)
-
-    dX_col = np.dot(dZ_col, W_col.T)
-    dA_prev = col2im_nhwc(
-        dX_col,
-        X_shape=A_prev.shape,
-        filter_size=f,
-        stride=stride,
-        pad=pad,
-    ).astype(np.float32)
-
-    return dA_prev, dW, db
+from midterm.code.layers import (
+    conv_backward,
+    dense_backward,
+    dropout_backward,
+    global_avg_pool_backward,
+    max_pool_backward,
+    relu_backward,
+)
 
 
 def model_backward(AL, Y, caches):
+    m = Y.shape[0]
     grads = {}
 
-    dZ5 = AL - Y
+    dZ5 = (AL - Y) / m
     dA4, grads["dW5"], grads["db5"] = dense_backward(dZ5, caches["dense2"])
 
+    dA4 = dropout_backward(dA4, caches.get("dropout1"))
     dZ4 = relu_backward(dA4, caches["Z4"])
     dG, grads["dW4"], grads["db4"] = dense_backward(dZ4, caches["dense1"])
 
