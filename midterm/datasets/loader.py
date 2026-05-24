@@ -1,16 +1,32 @@
-from datasets.preprocessing.loader import Dataset
-
 import os
+import sys
+
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(ROOT)
+
+from datasets.preprocessing.loader import Dataset
 
 if __name__ == "__main__":
 
     # Khoi tao class
     dataset = Dataset(
-        zip_path="datasets/raw/Fruits.zip",
-        extract_dir="datasets/processed",
+        zip_path="Fruits_1.zip",
+        extract_dir="datasets/processed_fruits1",
         dataset_dir="midterm/datasets",
         objects=["Fruits"],
-        status=["banana", "cucumber", "grapes", "kiwi", "mango", "orange","pear", "pineapple","pomegranate", "watermelon"]
+        status=[
+            "Banana",
+            "Cucumber",
+            "Grapes",
+            "Kiwi",
+            "Mango",
+            "Orange",
+            "Pear",
+            "Pineapple",
+            "Pomegranate",
+            "Watermelon",
+        ]
     )
 
     # Giai nen thu muc goc
@@ -28,7 +44,7 @@ if __name__ == "__main__":
         info=False
     )
 
-    # Khoi tao dieu kien voi gop 4 loai trai cay voi ca 3 truong hop
+    # Khoi tao dieu kien cho bo Fruits_1
     dataset.fit(
         merge=False,
         param=None,
@@ -37,7 +53,7 @@ if __name__ == "__main__":
 
     # Khoi tao file dataset
     dataset.transform(
-        name_file="dataset.csv",
+        name_file="dataset_fruits1.csv",
         index=False,
         end=False
     )

@@ -18,9 +18,21 @@ def dense_backward(dZ, cache):
     return dA_prev, dW, db
 
 
+def dropout_backward(dA, cache):
+    if cache is None:
+        return dA
+
+    mask, keep_prob = cache
+    return (dA * mask / keep_prob).astype(np.float32)
+
+
 def global_avg_pool_backward(dA, cache):
     m, H, W, C = cache
     return np.ones((m, H, W, C), dtype=np.float32) * dA[:, None, None, :] / (H * W)
+
+
+def flatten_backward(dA, cache):
+    return dA.reshape(cache).astype(np.float32)
 
 
 def max_pool_backward(dA, cache):
@@ -39,7 +51,9 @@ def max_pool_backward(dA, cache):
                 for c in range(C_prev):
                     window = A_prev[i, vert_start:vert_end, horiz_start:horiz_end, c]
                     mask = window == np.max(window)
-                    dA_prev[i, vert_start:vert_end, horiz_start:horiz_end, c] += mask * dA[i, h, w, c]
+                    dA_prev[i, vert_start:vert_end, horiz_start:horiz_end, c] += (
+                        mask * dA[i, h, w, c] / np.sum(mask)
+                    )
 
     return dA_prev
 
@@ -75,10 +89,16 @@ def model_backward(AL, Y, caches):
     dZ5 = AL - Y
     dA4, grads["dW5"], grads["db5"] = dense_backward(dZ5, caches["dense2"])
 
+    dA4 = dropout_backward(dA4, caches.get("dropout1"))
     dZ4 = relu_backward(dA4, caches["Z4"])
     dG, grads["dW4"], grads["db4"] = dense_backward(dZ4, caches["dense1"])
 
-    dA3 = global_avg_pool_backward(dG, caches["gap"])
+    if "flatten" in caches:
+        dA3 = flatten_backward(dG, caches["flatten"])
+        if "pool3" in caches:
+            dA3 = max_pool_backward(dA3, caches["pool3"])
+    else:
+        dA3 = global_avg_pool_backward(dG, caches["gap"])
     dZ3 = relu_backward(dA3, caches["Z3"])
     dP2, grads["dW3"], grads["db3"] = conv_backward(dZ3, caches["conv3"])
 

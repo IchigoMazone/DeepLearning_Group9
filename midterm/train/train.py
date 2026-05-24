@@ -7,13 +7,13 @@ from midterm.code.engine import train_model as train
 
 if __name__ == "__main__":
     train(
-        train_csv="midterm/datasets/cf/train.csv",
-        val_csv="midterm/datasets/cf/val.csv",
-        num_classes=10,
-        epochs=20,
+        train_csv="midterm/datasets/cf_5/train.csv",
+        val_csv="midterm/datasets/cf_5/val.csv",
+        num_classes=5,
+        epochs=80,
         batch_size=8,
-        learning_rate=0.0003,
-        checkpoint_path="midterm/outputs/best.pkl",
+        learning_rate=0.0007,
+        checkpoint_path="midterm/outputs/best_cf5_numpy.pkl",
         image_size=(64, 64),
     )
 

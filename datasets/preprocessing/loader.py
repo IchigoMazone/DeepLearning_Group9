@@ -302,12 +302,11 @@ class Dataset(Interface):
                 f"all items in param must be str"
             )
         
+        valid_extensions = tuple(p.lower() for p in param)
         return [
             f"{folder}/{f}"
             for f in os.listdir(folder)
-            if f.endswith(
-                tuple(param)
-            )
+            if f.lower().endswith(valid_extensions)
         ]
     
     def extract_all(self, progress=True, info=True):

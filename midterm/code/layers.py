@@ -89,7 +89,27 @@ def global_avg_pool_forward(A_prev):
     return A, cache
 
 
+def flatten_forward(A_prev):
+    A = A_prev.reshape(A_prev.shape[0], -1)
+    cache = A_prev.shape
+    return A, cache
+
+
 def dense_forward(A_prev, W, b):
     Z = np.dot(A_prev, W) + b
     cache = (A_prev, W, b)
     return Z, cache
+
+
+def dropout_forward(A_prev, keep_prob=1.0, seed=None, training=True):
+    if not training or keep_prob >= 1.0:
+        return A_prev, None
+
+    if keep_prob <= 0.0:
+        raise ValueError("keep_prob must be in (0, 1]")
+
+    rng = np.random.default_rng(seed)
+    mask = (rng.random(A_prev.shape) < keep_prob).astype(np.float32)
+    A = A_prev * mask / keep_prob
+    cache = (mask, keep_prob)
+    return A.astype(np.float32), cache
