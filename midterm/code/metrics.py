@@ -2,7 +2,8 @@ import numpy as np
 
 
 def compute_loss(AL, Y):
-    return -np.sum(Y * np.log(AL + 1e-8)) / Y.shape[0]
+    AL = np.clip(AL, 1e-8, 1.0)
+    return float(-np.sum(Y * np.log(AL)) / Y.shape[0])
 
 
 def compute_accuracy(y_pred, y_true):

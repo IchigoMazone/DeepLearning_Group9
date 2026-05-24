@@ -9,8 +9,19 @@ class Adam:
         self.eps = eps
         self.weight_decay = weight_decay
         self.t = 0
-        self.m = {key: np.zeros_like(value) for key, value in parameters.items()}
-        self.v = {key: np.zeros_like(value) for key, value in parameters.items()}
+        self.m = {key: np.zeros_like(value, dtype=np.float32) for key, value in parameters.items()}
+        self.v = {key: np.zeros_like(value, dtype=np.float32) for key, value in parameters.items()}
+
+    def set_learning_rate(self, learning_rate):
+        self.learning_rate = learning_rate
+
+    def _clip(self, grad):
+        if not self.clip_norm:
+            return grad
+        norm = np.linalg.norm(grad)
+        if norm > self.clip_norm:
+            grad = grad * (self.clip_norm / (norm + 1e-12))
+        return grad
 
     def step(self, parameters, grads):
         self.t += 1
@@ -27,4 +38,3 @@ class Adam:
             parameters[key] -= self.learning_rate * m_hat / (np.sqrt(v_hat) + self.eps)
 
         return parameters
-

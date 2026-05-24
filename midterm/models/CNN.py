@@ -14,7 +14,7 @@ from midterm.code.layers import (
 )
 
 
-class CNN:
+class OptimizedCNN:
     """
     CNN NumPy/CV2 cho bai toan phan loai trai cay.
 
@@ -27,7 +27,7 @@ class CNN:
     - Dense num_classes -> Softmax
     """
 
-    def __init__(self, input_shape=(64, 64, 3), num_classes=10, seed=42):
+    def __init__(self, input_shape=(96, 96, 3), num_classes=10, seed=42):
         if len(input_shape) != 3:
             raise ValueError("input_shape must be (height, width, channels)")
 
@@ -42,9 +42,8 @@ class CNN:
         self.params = self._init_params()
 
     def _init_params(self):
-        _, _, C = self.input_shape
+        _, _, channels = self.input_shape
         rng = np.random.default_rng(self.seed)
-
         return {
             "W1": he_init(rng, (5, 5, C, 16), fan_in=5 * 5 * C),
             "b1": np.zeros((1, 1, 1, 16), dtype=np.float32),
@@ -98,28 +97,21 @@ class CNN:
 
         caches.update({
             "Z1": Z1,
-            "A1": A1,
             "Z2": Z2,
-            "A2": A2,
             "Z3": Z3,
-            "A3": A3,
             "Z4": Z4,
-            "A4": A4,
             "Z5": Z5,
             "AL": AL,
         })
-
         return AL, caches
 
     def predict(self, X):
         AL, _ = self.forward(X)
         return np.argmax(AL, axis=1)
 
-    def get_parameters(self):
-        return self.params
 
-    def set_parameters(self, params):
-        self.params = params
+def init_parameters(num_classes=10, input_shape=(96, 96, 3), seed=42):
+    return OptimizedCNN(input_shape=input_shape, num_classes=num_classes, seed=seed).get_parameters()
 
 
 def init_parameters(num_classes=10, input_shape=(64, 64, 3), seed=42):
@@ -146,8 +138,8 @@ def model_forward(
     )
 
 
-def predict(X, parameters, input_shape=(64, 64, 3), num_classes=10):
-    model = CNN(input_shape=input_shape, num_classes=num_classes)
+def predict(X, parameters, input_shape=(96, 96, 3), num_classes=10):
+    model = OptimizedCNN(input_shape=input_shape, num_classes=num_classes)
     model.set_parameters(parameters)
     return model.predict(X)
 

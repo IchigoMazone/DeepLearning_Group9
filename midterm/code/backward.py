@@ -84,9 +84,10 @@ def conv_backward(dZ, cache):
 
 
 def model_backward(AL, Y, caches):
+    m = Y.shape[0]
     grads = {}
 
-    dZ5 = AL - Y
+    dZ5 = (AL - Y) / m
     dA4, grads["dW5"], grads["db5"] = dense_backward(dZ5, caches["dense2"])
 
     dA4 = dropout_backward(dA4, caches.get("dropout1"))

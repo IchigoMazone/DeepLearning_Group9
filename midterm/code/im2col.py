@@ -3,24 +3,15 @@ import numpy as np
 
 def im2col_nhwc(X, filter_size, stride=1, pad=0):
     """
-    Chuyen batch anh NHWC thanh ma tran cac cua so truot.
-
-    Dau vao:
-    - X: (m, H, W, C)
-    - filter_size: kich thuoc filter f
-    - stride: buoc truot
-    - pad: padding
-
-    Dau ra:
-    - cols: (m * H_out * W_out, f * f * C)
-    - out_shape: (m, H_out, W_out, C)
+    Chuyển batch ảnh NHWC thành ma trận các cửa sổ trượt (im2col).
+    Dùng cho conv_forward.
     """
-
     if pad > 0:
         X_pad = np.pad(
             X,
             ((0, 0), (pad, pad), (pad, pad), (0, 0)),
             mode="constant",
+            constant_values=0
         )
     else:
         X_pad = X
@@ -30,6 +21,11 @@ def im2col_nhwc(X, filter_size, stride=1, pad=0):
     H_out = (H_pad - f) // stride + 1
     W_out = (W_pad - f) // stride + 1
 
+    if H_out <= 0 or W_out <= 0:
+        raise ValueError(f"Invalid output size: H_out={H_out}, W_out={W_out}. "
+                        f"Check input size, filter_size={f}, stride={stride}, pad={pad}")
+
+    # Sử dụng as_strided để lấy các cửa sổ
     shape = (m, H_out, W_out, f, f, C)
     strides = (
         X_pad.strides[0],
@@ -41,10 +37,7 @@ def im2col_nhwc(X, filter_size, stride=1, pad=0):
     )
 
     windows = np.lib.stride_tricks.as_strided(
-        X_pad,
-        shape=shape,
-        strides=strides,
-        writeable=False,
+        X_pad, shape=shape, strides=strides, writeable=False
     )
 
     cols = windows.reshape(m * H_out * W_out, f * f * C)
@@ -53,16 +46,9 @@ def im2col_nhwc(X, filter_size, stride=1, pad=0):
 
 def col2im_nhwc(cols, X_shape, filter_size, stride=1, pad=0):
     """
-    Dua gradient dang column ve lai shape anh NHWC.
-
-    Dau vao:
-    - cols: (m * H_out * W_out, f * f * C)
-    - X_shape: shape goc cua X, (m, H, W, C)
-
-    Dau ra:
-    - dX: (m, H, W, C)
+    Chuyển gradient từ dạng cột về lại shape ảnh (col2im).
+    Dùng cho conv_backward.
     """
-
     m, H, W, C = X_shape
     f = filter_size
     H_pad = H + 2 * pad
@@ -73,13 +59,13 @@ def col2im_nhwc(cols, X_shape, filter_size, stride=1, pad=0):
     dX_pad = np.zeros((m, H_pad, W_pad, C), dtype=cols.dtype)
     cols_reshaped = cols.reshape(m, H_out, W_out, f, f, C)
 
+    # Accumulate gradients
     for i in range(f):
-        i_end = i + stride * H_out
         for j in range(f):
-            j_end = j + stride * W_out
-            dX_pad[:, i:i_end:stride, j:j_end:stride, :] += cols_reshaped[:, :, :, i, j, :]
+            dX_pad[:, i:i + H_out*stride:stride,
+                      j:j + W_out*stride:stride, :] += cols_reshaped[:, :, :, i, j, :]
 
+    # Remove padding
     if pad == 0:
         return dX_pad
     return dX_pad[:, pad:-pad, pad:-pad, :]
-
