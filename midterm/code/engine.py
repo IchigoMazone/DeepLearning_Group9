@@ -1,4 +1,5 @@
-import os
+import math
+import time
 
 import numpy as np
 
@@ -9,17 +10,21 @@ except ImportError:
 
 from midterm.code.backward import model_backward
 from midterm.code.checkpoint import save_checkpoint
-from midterm.code.data import augment_batch, create_batches, load_csv_dataset, one_hot
+from midterm.code.data import augment_batch, create_batches, load_csv_dataset, make_tta_batch, one_hot
 from midterm.code.metrics import (
     classification_metrics,
-    compute_accuracy,
     compute_loss,
     print_classification_report,
     print_confusion_matrix,
     print_metrics_summary,
 )
 from midterm.code.optimizers import Adam
-from midterm.models.CNN import OptimizedCNN, model_forward, predict
+from midterm.models.CNN import OptimizedCNN, model_forward
+
+
+def infer_num_classes(*labels):
+    max_label = max(int(np.max(y)) for y in labels if len(y))
+    return max_label + 1
 
 
 def summarize_weights_biases(parameters):
@@ -34,7 +39,29 @@ def summarize_weights_biases(parameters):
     return "\n".join(parts)
 
 
-def evaluate_arrays(X, y, parameters, image_size=(96, 96), num_classes=10, batch_size=32, tta=False):
+def predict_arrays(X, parameters, image_size=(128, 128), num_classes=5, tta=False):
+    if tta:
+        probs = []
+        for X_variant in make_tta_batch(X):
+            AL_variant, _ = model_forward(
+                X_variant,
+                parameters,
+                input_shape=(*image_size, X.shape[-1]),
+                num_classes=num_classes,
+            )
+            probs.append(AL_variant)
+        AL = np.mean(probs, axis=0).astype(np.float32)
+    else:
+        AL, _ = model_forward(
+            X,
+            parameters,
+            input_shape=(*image_size, X.shape[-1]),
+            num_classes=num_classes,
+        )
+    return np.argmax(AL, axis=1), AL
+
+
+def evaluate_metrics(X, y, parameters, image_size=(128, 128), num_classes=5, batch_size=16, tta=False):
     losses = []
     preds = []
     probs = []
@@ -43,87 +70,65 @@ def evaluate_arrays(X, y, parameters, image_size=(96, 96), num_classes=10, batch
         end = start + batch_size
         X_batch = X[start:end]
         y_batch = y[start:end]
-        Y_batch = one_hot(y_batch, num_classes)
-        if tta:
-            tta_probs = []
-            for X_variant in make_tta_batch(X_batch):
-                AL_variant, _ = model_forward(
-                    X_variant,
-                    parameters,
-                    input_shape=(*image_size, 3),
-                    num_classes=num_classes,
-                )
-                tta_probs.append(AL_variant)
-            AL = np.mean(tta_probs, axis=0).astype(np.float32)
-        else:
-            AL, _ = model_forward(X_batch, parameters, input_shape=(*image_size, 3), num_classes=num_classes)
-        losses.append(compute_loss(AL, Y_batch) * len(X_batch))
-        probs.append(AL)
-        preds.append(np.argmax(AL, axis=1))
+        pred_batch, AL_batch = predict_arrays(
+            X_batch,
+            parameters,
+            image_size=image_size,
+            num_classes=num_classes,
+            tta=tta,
+        )
+        losses.append(compute_loss(AL_batch, one_hot(y_batch, num_classes)) * len(X_batch))
+        preds.append(pred_batch)
+        probs.append(AL_batch)
 
-    AL_all = np.concatenate(probs, axis=0)
-    pred_all = np.concatenate(preds, axis=0)
+    y_pred = np.concatenate(preds, axis=0)
+    AL = np.concatenate(probs, axis=0)
     loss = float(np.sum(losses) / len(X))
-    acc = compute_accuracy(pred_all, y)
-    top3 = compute_top_k_accuracy(AL_all, y, k=min(3, num_classes))
-    return loss, acc, top3
-
-
-def evaluate_metrics(X, y, parameters, image_size=(64, 64), num_classes=10):
-    pred, AL = predict_arrays(X, parameters, image_size=image_size, num_classes=num_classes)
-    loss = compute_loss(AL, one_hot(y, num_classes))
-    metrics = classification_metrics(y, pred, num_classes)
-    return loss, metrics, pred
-
-
-def predict_arrays(X, parameters, image_size=(64, 64), num_classes=10):
-    AL, _ = model_forward(
-        X,
-        parameters,
-        input_shape=(image_size[0], image_size[1], 3),
-        num_classes=num_classes,
-    )
-    return np.argmax(AL, axis=1), AL
-
-
-def print_per_class_report(y_true, y_pred, class_names=None, num_classes=10):
-    metrics = classification_metrics(y_true, y_pred, num_classes)
-    print_classification_report(metrics, class_names=class_names)
+    metrics = classification_metrics(y, y_pred, num_classes)
+    return loss, metrics, y_pred, AL
 
 
 def train_model(
     train_csv,
     val_csv,
-    num_classes=10,
+    num_classes=5,
     epochs=60,
     batch_size=16,
     learning_rate=0.001,
-    image_size=(96, 96),
+    image_size=(128, 128),
     seed=42,
     augment=True,
-    normalize=True,
+    normalize=False,
     dropout_keep_prob=0.65,
     weight_decay=1e-4,
-    patience=8,
+    clip_norm=5.0,
+    patience=12,
     min_delta=1e-4,
-    train_acc_sample=128,
+    train_acc_sample=256,
     latest_checkpoint_path=None,
     report_interval=5,
     keep_aspect=True,
     limit=None,
     checkpoint_path="midterm/outputs/best.pkl",
-    param_log_interval="epoch",
-    monitor="val_acc",
-    dropout_rate=0.25,
-    early_stopping_patience=20,
+    param_log_interval=0,
+    monitor="val_macro_f1",
+    dropout_rate=None,
+    early_stopping_patience=None,
+    label_smoothing=0.05,
 ):
-    print("Dang load du lieu...")
+    if dropout_rate is not None:
+        dropout_keep_prob = 1.0 - float(dropout_rate)
+    if early_stopping_patience is not None:
+        patience = early_stopping_patience
+
+    print("Loading dataset...")
     X_train, y_train, class_names = load_csv_dataset(
         train_csv,
         image_size=image_size,
         limit=limit,
         normalize=normalize,
         keep_aspect=keep_aspect,
+        add_structure=True,
     )
     X_val, y_val, _ = load_csv_dataset(
         val_csv,
@@ -131,31 +136,47 @@ def train_model(
         limit=limit,
         normalize=normalize,
         keep_aspect=keep_aspect,
+        add_structure=True,
     )
-    Y_train = one_hot(y_train, num_classes)
 
-    print(f"Train: {len(X_train)} images | Val: {len(X_val)} images | Image size: {image_size}")
+    inferred_classes = infer_num_classes(y_train, y_val)
+    if num_classes != inferred_classes:
+        print(f"[WARN] num_classes={num_classes} does not match dataset labels. Using {inferred_classes} classes.")
+        num_classes = inferred_classes
+    class_names = class_names[:num_classes]
 
-    model = OptimizedCNN(input_shape=(*image_size, 3), num_classes=num_classes, seed=seed)
+    print(
+        f"Train: {len(X_train)} images | Val: {len(X_val)} images | "
+        f"Image size: {image_size} | Classes: {num_classes}"
+    )
+
+    model = OptimizedCNN(input_shape=(*image_size, X_train.shape[-1]), num_classes=num_classes, seed=seed)
     parameters = model.get_parameters()
-    optimizer = Adam(parameters, learning_rate=learning_rate, weight_decay=weight_decay)
+    optimizer = Adam(
+        parameters,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        clip_norm=clip_norm,
+    )
+
+    if latest_checkpoint_path is None:
+        latest_checkpoint_path = checkpoint_path.replace("best", "latest")
+
+    y_train_one_hot = one_hot(y_train, num_classes)
+    if label_smoothing > 0.0:
+        y_train_one_hot = y_train_one_hot * (1.0 - label_smoothing) + label_smoothing / num_classes
     best_val_acc = -1.0
     best_val_loss = np.inf
     best_val_f1 = -1.0
     best_epoch = 0
     epochs_without_improvement = 0
     history = []
-
-    if latest_checkpoint_path is None:
-        checkpoint_dir = os.path.dirname(checkpoint_path)
-        latest_checkpoint_path = os.path.join(checkpoint_dir, "latest.pkl")
+    update_count = 0
 
     for epoch in range(1, epochs + 1):
         epoch_start = time.time()
         total_loss = 0.0
         steps = int(math.ceil(len(X_train) / batch_size))
-
-        # Cosine decay keeps early learning fast and late updates more stable.
         lr_now = learning_rate * 0.5 * (1.0 + math.cos(math.pi * (epoch - 1) / max(epochs, 1)))
         optimizer.set_learning_rate(lr_now)
 
@@ -170,7 +191,7 @@ def train_model(
             AL, caches = model_forward(
                 X_batch,
                 parameters,
-                input_shape=(*image_size, 3),
+                input_shape=(*image_size, X_batch.shape[-1]),
                 num_classes=num_classes,
                 training=True,
                 dropout_keep_prob=dropout_keep_prob,
@@ -182,64 +203,65 @@ def train_model(
             update_count += 1
             total_loss += loss * len(X_batch)
 
-            if isinstance(param_log_interval, int) and param_log_interval > 0:
-                if update_count % param_log_interval == 0:
-                    print(f"\nUpdate {update_count:05d} W/b summary")
-                    print(summarize_weights_biases(parameters))
+            if isinstance(param_log_interval, int) and param_log_interval > 0 and update_count % param_log_interval == 0:
+                print(f"\nUpdate {update_count:05d} W/b summary")
+                print(summarize_weights_biases(parameters))
 
-        sample_size = min(train_acc_sample, len(X_train))
-        train_loss_eval, train_metrics, _ = evaluate_metrics(
+        train_loss = float(total_loss / len(X_train))
+        sample_size = min(train_acc_sample or len(X_train), len(X_train))
+        train_eval_loss, train_metrics, _, _ = evaluate_metrics(
             X_train[:sample_size],
             y_train[:sample_size],
             parameters,
             image_size=image_size,
             num_classes=num_classes,
             batch_size=batch_size,
+            tta=False,
         )
-        val_loss, val_metrics, val_pred = evaluate_metrics(
+        val_loss, val_metrics, val_pred, _ = evaluate_metrics(
             X_val,
             y_val,
             parameters,
             image_size=image_size,
             num_classes=num_classes,
             batch_size=batch_size,
+            tta=False,
         )
+
         train_acc = train_metrics["accuracy"]
         val_acc = val_metrics["accuracy"]
         val_macro_f1 = val_metrics["macro_f1"]
-
         elapsed = time.time() - epoch_start
+
         print(
-            f"Epoch {epoch:02d}/{epochs} | "
-            f"Train Loss: {train_loss:.4f} | "
-            f"Train Eval Loss(sample): {train_loss_eval:.4f} | "
-            f"Train Acc(sample): {train_acc * 100:.2f}% | "
-            f"Val Loss: {val_loss:.4f} | "
-            f"Val Acc: {val_acc * 100:.2f}% | "
-            f"Val Macro F1: {val_macro_f1 * 100:.2f}%"
+            f"Epoch {epoch:03d}/{epochs} | lr={lr_now:.6f} | "
+            f"Train Loss: {train_loss:.4f} | Train Acc(sample): {train_acc * 100:5.2f}% | "
+            f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc * 100:5.2f}% | "
+            f"Val Macro F1: {val_macro_f1 * 100:5.2f}% | {elapsed:.1f}s"
         )
 
         if report_interval and (epoch == 1 or epoch % report_interval == 0):
-            print_metrics_summary("Train(sample)", train_loss_eval, train_metrics)
+            print_metrics_summary("Train(sample)", train_eval_loss, train_metrics)
             print_metrics_summary("Val", val_loss, val_metrics)
+            print_confusion_matrix(val_metrics, class_names=class_names)
 
         improved = (
-            val_acc > best_val_acc + min_delta
+            val_macro_f1 > best_val_f1 + min_delta
             or (
-                abs(val_acc - best_val_acc) <= min_delta
-                and val_macro_f1 > best_val_f1 + min_delta
+                abs(val_macro_f1 - best_val_f1) <= min_delta
+                and val_acc > best_val_acc + min_delta
             )
             or (
-                abs(val_acc - best_val_acc) <= min_delta
-                and abs(val_macro_f1 - best_val_f1) <= min_delta
+                abs(val_macro_f1 - best_val_f1) <= min_delta
+                and abs(val_acc - best_val_acc) <= min_delta
                 and val_loss < best_val_loss - min_delta
             )
         )
 
         epoch_metrics = {
             "epoch": epoch,
-            "train_loss": float(train_loss),
-            "train_eval_loss": float(train_loss_eval),
+            "train_loss": train_loss,
+            "train_eval_loss": float(train_eval_loss),
             "train_acc_sample": float(train_acc),
             "train_macro_f1_sample": float(train_metrics["macro_f1"]),
             "val_loss": float(val_loss),
@@ -249,32 +271,36 @@ def train_model(
         }
         history.append(epoch_metrics)
 
-        common_metadata = {
-            "image_size": image_size,
+        metadata = {
+            "image_size": tuple(image_size),
+            "num_classes": num_classes,
             "normalize": normalize,
-                    "architecture": "conv16-pool-conv32-pool-conv64-pool-flatten-dense128",
+            "keep_aspect": keep_aspect,
+            "architecture": "rgb-gray-edge-conv32-conv64-conv128-avgmaxpool-dense128",
+            "input_channels": int(X_train.shape[-1]),
             "dropout_keep_prob": dropout_keep_prob,
             "weight_decay": weight_decay,
             "learning_rate": learning_rate,
             "batch_size": batch_size,
-            "keep_aspect": keep_aspect,
+            "label_smoothing": label_smoothing,
+            "monitor": monitor,
             "metrics": epoch_metrics,
-            "val_metrics": val_metrics,
             "history": history.copy(),
             "best_epoch": best_epoch,
             "best_val_acc": float(max(best_val_acc, val_acc)),
+            "best_val_macro_f1": float(max(best_val_f1, val_macro_f1)),
         }
-
-        latest_path = save_checkpoint(
+        save_checkpoint(
             parameters,
             epoch,
             val_loss,
             val_acc,
             class_names,
             latest_checkpoint_path,
-            metadata={**common_metadata, "is_best": False},
+            image_size=image_size,
+            num_classes=num_classes,
+            metadata={**metadata, "is_best": False},
         )
-        print(f"Saved latest checkpoint: {latest_path}")
 
         if improved:
             best_val_acc = val_acc
@@ -282,44 +308,6 @@ def train_model(
             best_val_f1 = val_macro_f1
             best_epoch = epoch
             epochs_without_improvement = 0
-            best_path = save_checkpoint(
-                parameters,
-                epoch,
-                val_loss,
-                val_acc,
-                class_names,
-                checkpoint_path,
-                metadata={
-                    **common_metadata,
-                    "is_best": True,
-                    "best_epoch": best_epoch,
-                    "best_val_acc": float(best_val_acc),
-                    "best_val_loss": float(best_val_loss),
-                    "best_val_macro_f1": float(best_val_f1),
-                },
-            )
-            print(
-                f"Saved best checkpoint: {best_path} | "
-                f"Val Acc: {best_val_acc * 100:.2f}% | "
-                f"Val Macro F1: {best_val_f1 * 100:.2f}%"
-            )
-            print_classification_report(val_metrics, class_names=class_names)
-        else:
-            epochs_without_improvement += 1
-            if patience and epochs_without_improvement >= patience:
-                print(
-                    f"Early stopping at epoch {epoch}: "
-                    f"val did not improve for {patience} epochs. "
-                    f"Best Val Acc: {best_val_acc * 100:.2f}% "
-                    f"at epoch {best_epoch}"
-                )
-                break
-
-        score = train_acc if monitor == "train_acc" else val_acc
-        best_score = best_val_acc
-        if score > best_score:
-            best_val_acc = score
-            best_epoch = epoch
             save_checkpoint(
                 parameters,
                 epoch,
@@ -329,49 +317,78 @@ def train_model(
                 checkpoint_path,
                 image_size=image_size,
                 num_classes=num_classes,
+                metadata={
+                    **metadata,
+                    "is_best": True,
+                    "best_epoch": best_epoch,
+                    "best_val_acc": float(best_val_acc),
+                    "best_val_loss": float(best_val_loss),
+                    "best_val_macro_f1": float(best_val_f1),
+                },
             )
             print(
-                f"Saved best model: epoch={epoch}, "
-                f"train_acc={train_acc * 100:.2f}%, val_acc={val_acc * 100:.2f}%"
+                f"Saved best checkpoint: {checkpoint_path} | "
+                f"Val Acc: {best_val_acc * 100:.2f}% | Val Macro F1: {best_val_f1 * 100:.2f}%"
             )
-        elif early_stopping_patience and epoch - best_epoch >= early_stopping_patience:
-            print(
-                f"Early stopping at epoch {epoch}. "
-                f"No {monitor} improvement for {early_stopping_patience} epochs."
-            )
-            break
+            print_classification_report(val_metrics, class_names=class_names)
+        else:
+            epochs_without_improvement += 1
+            if patience and epochs_without_improvement >= patience:
+                print(
+                    f"Early stopping at epoch {epoch}. "
+                    f"No validation improvement for {patience} epochs. "
+                    f"Best epoch: {best_epoch}"
+                )
+                break
 
-    metric_name = "Train Acc" if monitor == "train_acc" else "Val Acc"
-    print(f"Done. Best {metric_name} = {best_val_acc * 100:.2f}% at epoch {best_epoch}")
+    print(
+        f"Done. Best Val Acc = {best_val_acc * 100:.2f}% | "
+        f"Best Val Macro F1 = {best_val_f1 * 100:.2f}% at epoch {best_epoch}"
+    )
     return parameters
 
 
-def evaluate_csv(test_csv, parameters, num_classes=10, image_size=(64, 64), normalize=False, keep_aspect=True):
+def evaluate_csv(
+    test_csv,
+    parameters,
+    num_classes=5,
+    image_size=(128, 128),
+    batch_size=16,
+    normalize=False,
+    keep_aspect=True,
+    tta=True,
+):
     X_test, y_test, class_names = load_csv_dataset(
         test_csv,
         image_size=image_size,
         normalize=normalize,
         keep_aspect=keep_aspect,
+        add_structure=True,
     )
-    loss, metrics, _ = evaluate_metrics(X_test, y_test, parameters, image_size=image_size, num_classes=num_classes)
+    loss, metrics, _, _ = evaluate_metrics(
+        X_test,
+        y_test,
+        parameters,
+        image_size=image_size,
+        num_classes=num_classes,
+        batch_size=batch_size,
+        tta=tta,
+    )
     print_metrics_summary("Test", loss, metrics)
     print_classification_report(metrics, class_names=class_names)
     print_confusion_matrix(metrics, class_names=class_names)
-    acc = metrics["accuracy"]
-    return loss, acc
+    return loss, metrics["accuracy"]
 
 
-def predict_image(image, parameters, input_shape=(96, 96, 3), num_classes=10, tta=True):
+def predict_image(image, parameters, input_shape=(128, 128, 3), num_classes=5, tta=True):
     X = image[np.newaxis, ...].astype(np.float32, copy=False)
-    if tta:
-        probs = []
-        for X_variant in make_tta_batch(X):
-            AL_variant, _ = model_forward(X_variant, parameters, input_shape=input_shape, num_classes=num_classes)
-            probs.append(AL_variant)
-        AL = np.mean(probs, axis=0).astype(np.float32)
-        pred_idx = int(np.argmax(AL, axis=1)[0])
-    else:
-        AL, _ = model_forward(X, parameters, input_shape=input_shape, num_classes=num_classes)
-        pred_idx = int(predict(X, parameters, input_shape=input_shape, num_classes=num_classes)[0])
+    pred, AL = predict_arrays(
+        X,
+        parameters,
+        image_size=input_shape[:2],
+        num_classes=num_classes,
+        tta=tta,
+    )
+    pred_idx = int(pred[0])
     confidence = float(np.max(AL))
     return pred_idx, confidence

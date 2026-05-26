@@ -6,50 +6,42 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(ROOT)
 
 from midterm.code.checkpoint import load_checkpoint
-from midterm.code.data import load_image_numpy, make_filtered_csv, make_split_csv
+from midterm.code.data import load_image_numpy, make_split_csv
 from midterm.code.engine import evaluate_csv, predict_image, train_model
 
 
 CONFIG = {
-    "dataset_csv": "midterm/datasets/dataset_5.csv",
-    "source_dataset_csv": "midterm/datasets/dataset_fruits1.csv",
-    "split_dir": "midterm/datasets/cf_5",
-    "train_csv": "midterm/datasets/cf_5/train.csv",
-    "val_csv": "midterm/datasets/cf_5/val.csv",
-    "test_csv": "midterm/datasets/cf_5/test.csv",
-    "target_size": (64, 64),
+    "dataset_csv": "midterm/datasets/dataset.csv",
+    "split_dir": "midterm/datasets/cf",
+    "train_csv": "midterm/datasets/cf/train.csv",
+    "val_csv": "midterm/datasets/cf/val.csv",
+    "test_csv": "midterm/datasets/cf/test.csv",
+    "target_size": (128, 128),
+    "input_channels": 5,
     "num_classes": 5,
-    "selected_classes": [
-        "Fruits_Cucumber",
-        "Fruits_Grapes",
-        "Fruits_Kiwi",
-        "Fruits_Orange",
-        "Fruits_Pomegranate",
-    ],
     "epochs": 80,
-    "batch_size": 8,
+    "batch_size": 16,
     "lr": 0.0007,
-    "dropout_keep_prob": 0.7,
     "weight_decay": 1e-4,
-    "patience": 10,
-    "report_interval": 5,
+    "clip_norm": 5.0,
+    "augment": True,
+    "normalize": False,
     "keep_aspect": True,
-    "best_model": "midterm/outputs/best_cf5_numpy.pkl",
-    "latest_model": "midterm/outputs/latest_cf5_numpy.pkl",
+    "dropout_keep_prob": 0.72,
+    "patience": 16,
+    "report_interval": 4,
+    "tta": True,
+    "best_model": "midterm/outputs/best.pkl",
+    "latest_model": "midterm/outputs/latest.pkl",
+    "seed": 42,
+    "label_smoothing": 0.05,
 }
 
 
-def ensure_split_csv():
+def ensure_split_csv(force=False):
     paths = [CONFIG["train_csv"], CONFIG["val_csv"], CONFIG["test_csv"]]
-    if all(os.path.exists(path) for path in paths):
+    if not force and all(os.path.exists(path) for path in paths):
         return tuple(paths)
-
-    if not os.path.exists(CONFIG["dataset_csv"]) and os.path.exists(CONFIG["source_dataset_csv"]):
-        make_filtered_csv(
-            dataset_csv=CONFIG["source_dataset_csv"],
-            output_csv=CONFIG["dataset_csv"],
-            class_names=CONFIG["selected_classes"],
-        )
 
     if not os.path.exists(CONFIG["dataset_csv"]):
         raise FileNotFoundError(f"Cannot find dataset CSV: {CONFIG['dataset_csv']}")
@@ -64,7 +56,7 @@ def ensure_split_csv():
 
 
 def run_train(args):
-    train_csv, val_csv, _ = ensure_split_csv()
+    train_csv, val_csv, _ = ensure_split_csv(force=args.resplit)
     train_model(
         train_csv=train_csv,
         val_csv=val_csv,
@@ -73,12 +65,19 @@ def run_train(args):
         batch_size=args.batch_size or CONFIG["batch_size"],
         learning_rate=args.lr or CONFIG["lr"],
         image_size=CONFIG["target_size"],
+        seed=CONFIG["seed"],
+        augment=CONFIG["augment"] and not args.no_augment,
+        normalize=CONFIG["normalize"],
         dropout_keep_prob=CONFIG["dropout_keep_prob"],
+        label_smoothing=CONFIG["label_smoothing"],
         weight_decay=CONFIG["weight_decay"],
+        clip_norm=CONFIG["clip_norm"],
         patience=CONFIG["patience"],
         latest_checkpoint_path=CONFIG["latest_model"],
         report_interval=CONFIG["report_interval"],
         keep_aspect=CONFIG["keep_aspect"],
+        checkpoint_path=args.output or CONFIG["best_model"],
+        param_log_interval=args.param_log_interval,
     )
 
 
@@ -93,10 +92,12 @@ def run_eval(resume_path=None):
     evaluate_csv(
         test_csv=test_csv,
         parameters=checkpoint["parameters"],
-        num_classes=CONFIG["num_classes"],
-        image_size=CONFIG["target_size"],
-        normalize=checkpoint.get("normalize", False),
+        num_classes=num_classes,
+        image_size=image_size,
+        batch_size=CONFIG["batch_size"],
+        normalize=checkpoint.get("normalize", CONFIG["normalize"]),
         keep_aspect=checkpoint.get("keep_aspect", CONFIG["keep_aspect"]),
+        tta=CONFIG["tta"],
     )
 
 
@@ -110,18 +111,17 @@ def run_predict(resume_path=None, image_path=None):
     image_size = tuple(checkpoint.get("image_size", CONFIG["target_size"]))
     num_classes = int(checkpoint.get("num_classes", CONFIG["num_classes"]))
     class_names = checkpoint.get("class_names")
+
     image = load_image_numpy(
         image_path,
-        CONFIG["target_size"],
-        normalize=checkpoint.get("normalize", False),
+        image_size,
+        normalize=checkpoint.get("normalize", CONFIG["normalize"]),
         keep_aspect=checkpoint.get("keep_aspect", CONFIG["keep_aspect"]),
     )
-
-    image = load_image_numpy(image_path, image_size)
     pred_idx, confidence = predict_image(
         image=image,
         parameters=checkpoint["parameters"],
-        input_shape=(*image_size, 3),
+        input_shape=(*image_size, checkpoint.get("input_channels", image.shape[-1])),
         num_classes=num_classes,
         tta=CONFIG["tta"],
     )
@@ -131,7 +131,7 @@ def run_predict(resume_path=None, image_path=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="NumPy CNN Fruit & Vegetable Classification")
+    parser = argparse.ArgumentParser(description="NumPy CNN 5-class fruit classification")
     parser.add_argument("--mode", default="train", choices=["split", "train", "eval", "predict"])
     parser.add_argument("--resume", type=str, default=None, help="Checkpoint path")
     parser.add_argument("--image", type=str, default=None, help="Image path for prediction")
@@ -139,13 +139,9 @@ def main():
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--output", type=str, default=None, help="Output checkpoint path")
-    parser.add_argument("--augment", action="store_true", help="Enable augmentation during training")
     parser.add_argument("--no-augment", action="store_true")
-    parser.add_argument(
-        "--param-log-interval",
-        default=0,
-        help="'epoch' to print W/b after every epoch, 0 to disable, or an integer update interval",
-    )
+    parser.add_argument("--resplit", action="store_true", help="Regenerate train/val/test CSV files")
+    parser.add_argument("--param-log-interval", default=0)
     args = parser.parse_args()
 
     if str(args.param_log_interval).isdigit():
@@ -154,7 +150,7 @@ def main():
         args.param_log_interval = 0
 
     if args.mode == "split":
-        train_csv, val_csv, test_csv = ensure_split_csv()
+        train_csv, val_csv, test_csv = ensure_split_csv(force=True)
         print(f"Train CSV: {train_csv}")
         print(f"Val CSV: {val_csv}")
         print(f"Test CSV: {test_csv}")

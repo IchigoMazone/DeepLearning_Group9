@@ -42,9 +42,9 @@ def to_numpy_nhwc(X):
     X = np.asarray(X, dtype=np.float32)
     if X.ndim != 4:
         raise ValueError(f"X must have 4 dimensions, got {X.shape}")
-    if X.shape[-1] == 3:
+    if X.shape[-1] in {1, 3, 4, 5}:
         return X
-    if X.shape[1] == 3:
+    if X.shape[1] in {1, 3, 4, 5}:
         return np.transpose(X, (0, 2, 3, 1))
     raise ValueError(f"Unsupported input shape: {X.shape}")
 
@@ -103,6 +103,12 @@ def global_avg_pool_forward(A_prev):
     A = np.mean(A_prev, axis=(1, 2), dtype=np.float32)
     return A.astype(np.float32, copy=False), A_prev.shape
 
+
+
+
+def global_max_pool_forward(A_prev):
+    A = np.max(A_prev, axis=(1, 2))
+    return A.astype(np.float32, copy=False), (A_prev, A)
 
 def flatten_forward(A_prev):
     A = A_prev.reshape(A_prev.shape[0], -1)
