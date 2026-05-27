@@ -105,7 +105,7 @@ class Dataset(Interface):
         self.kwargs = kwargs
         self._images = []
         self.num_classes = 0
-        self.name_classes = 0
+        self.name_classes = []
         self.label = None
 
     def extract_zip(self, flatten=False, progress=True, default=True, message=False, zip_path=None, extract_path=None, chunk_size=1024 * 64):
@@ -302,12 +302,11 @@ class Dataset(Interface):
                 f"all items in param must be str"
             )
         
+        valid_extensions = tuple(p.lower() for p in param)
         return [
             f"{folder}/{f}"
             for f in os.listdir(folder)
-            if f.endswith(
-                tuple(param)
-            )
+            if f.lower().endswith(valid_extensions)
         ]
     
     def extract_all(self, progress=True, info=True):
@@ -929,30 +928,89 @@ class Dataset(Interface):
         Nguon: TrinhNhuNhat_12052026.
         """
 
-        label = {}
-        dataset = {}
-        length_test = 3
-        keys = self.name_classes
-        images = self._images
-        keys_path = [key.replace("_", "/") for key in keys]
+        if not self._images or self.num_classes == 0 or not self.name_classes:
+            raise RuntimeError(
+                "Dataset is not fitted. Call dataset.fit(...) before dataset.transform(...)."
+            )
 
-        for index in range(self.num_classes):
-            key = keys[index]
-            label[key] = index
-        
-        for index, image in enumerate(images, start=0):
-            count, keys = 0, None
-            for test in [image[0], image[len(image) // 2], image[-1]]:
-                for key in keys_path:
-                    if key in test: 
-                        count += 1
-                        keys = key
+        if not isinstance(self.name_classes, list):
+            raise TypeError(
+                f"name_classes must be list. Call dataset.fit(...) again, got {type(self.name_classes).__name__}"
+            )
 
-            if count == length_test:
-                dataset[keys] = index
-                keys_path.remove(keys)
+        def split_parts(path):
+            return [
+                part.lower()
+                for part in path.replace("\\", "/").split("/")
+                if part
+            ]
 
-        return images, dataset
+        def contains_sequence(parts, target):
+            if len(target) > len(parts):
+                return False
+            for start in range(len(parts) - len(target) + 1):
+                if parts[start:start + len(target)] == target:
+                    return True
+            return False
+
+        class_keys = [class_name.replace("_", "/") for class_name in self.name_classes]
+        class_targets = {
+            class_key: [part.lower() for part in class_key.split("/") if part]
+            for class_key in class_keys
+        }
+
+        label = {
+            class_key: index
+            for index, class_key in enumerate(class_keys)
+        }
+
+        ordered_images = [None] * len(class_keys)
+        used_classes = set()
+
+        for images in self._images:
+            if not images:
+                continue
+
+            test_images = [
+                images[0],
+                images[len(images) // 2],
+                images[-1],
+            ]
+
+            scores = {}
+            for class_key, target in class_targets.items():
+                scores[class_key] = sum(
+                    contains_sequence(split_parts(image_path), target)
+                    for image_path in test_images
+                )
+
+            matched_class = max(scores, key=scores.get)
+            if scores[matched_class] == 0:
+                raise ValueError(
+                    "Cannot infer class from image paths. "
+                    f"Class candidates: {class_keys}. "
+                    f"Sample image: {images[0]}"
+                )
+
+            if matched_class in used_classes:
+                raise ValueError(
+                    f"Duplicate image group detected for class '{matched_class}'"
+                )
+
+            ordered_images[label[matched_class]] = images
+            used_classes.add(matched_class)
+
+        missing_classes = [
+            class_key
+            for class_key, index in label.items()
+            if ordered_images[index] is None
+        ]
+        if missing_classes:
+            raise ValueError(
+                f"Missing image groups for classes: {missing_classes}"
+            )
+
+        return ordered_images, label
     
     def transform(self, name_file="dataset.csv", index=False, end=False):
 
