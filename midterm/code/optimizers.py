@@ -1,26 +1,21 @@
 import numpy as np
 
 
-class Adam:
-    def __init__(
-        self,
-        parameters,
-        learning_rate=0.001,
-        beta1=0.9,
-        beta2=0.999,
-        eps=1e-8,
-        weight_decay=0.0,
-        clip_norm=None,
-    ):
+class GradientDescent:
+    """Vanilla gradient descent optimizer.
+
+    Formula:
+        W = W - learning_rate * dW
+        b = b - learning_rate * db
+
+    This class does not use momentum or adaptive gradients. Weight decay and
+    gradient clipping are optional stability helpers and can be set to 0/None.
+    """
+
+    def __init__(self, parameters=None, learning_rate=0.001, weight_decay=0.0, clip_norm=None):
         self.learning_rate = learning_rate
-        self.beta1 = beta1
-        self.beta2 = beta2
-        self.eps = eps
         self.weight_decay = weight_decay
         self.clip_norm = clip_norm
-        self.t = 0
-        self.m = {key: np.zeros_like(value, dtype=np.float32) for key, value in parameters.items()}
-        self.v = {key: np.zeros_like(value, dtype=np.float32) for key, value in parameters.items()}
 
     def set_learning_rate(self, learning_rate):
         self.learning_rate = learning_rate
@@ -34,16 +29,10 @@ class Adam:
         return grad
 
     def step(self, parameters, grads):
-        self.t += 1
         for key in parameters:
             grad = grads[f"d{key}"].astype(np.float32, copy=False)
             if self.weight_decay > 0.0 and key.startswith("W"):
                 grad = grad + self.weight_decay * parameters[key]
             grad = self._clip(grad)
-
-            self.m[key] = self.beta1 * self.m[key] + (1 - self.beta1) * grad
-            self.v[key] = self.beta2 * self.v[key] + (1 - self.beta2) * (grad ** 2)
-            m_hat = self.m[key] / (1 - self.beta1 ** self.t)
-            v_hat = self.v[key] / (1 - self.beta2 ** self.t)
-            parameters[key] -= self.learning_rate * m_hat / (np.sqrt(v_hat) + self.eps)
+            parameters[key] = (parameters[key] - self.learning_rate * grad).astype(np.float32, copy=False)
         return parameters

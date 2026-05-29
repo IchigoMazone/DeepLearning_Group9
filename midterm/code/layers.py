@@ -13,17 +13,15 @@ def relu_backward(dA, Z):
     return dZ
 
 
-def dropout_forward(A, dropout_rate=0.0, training=False, seed=None):
-    if not training or dropout_rate <= 0.0:
+def dropout_forward(A, keep_prob=1.0, training=False, seed=None):
+    if not training or keep_prob >= 1.0:
         return A, None
-    if dropout_rate >= 1.0:
-        raise ValueError("dropout_rate must be less than 1.0")
+    if keep_prob <= 0.0:
+        raise ValueError("keep_prob must be in (0, 1]")
 
     rng = np.random.default_rng(seed)
-    keep_prob = 1.0 - dropout_rate
     mask = (rng.random(A.shape) < keep_prob).astype(np.float32)
     return (A * mask / keep_prob).astype(np.float32, copy=False), (mask, keep_prob)
-
 
 def dropout_backward(dA, cache):
     if cache is None:
@@ -122,15 +120,3 @@ def dense_forward(A_prev, W, b):
     return Z, cache
 
 
-def dropout_forward(A_prev, keep_prob=1.0, seed=None, training=True):
-    if not training or keep_prob >= 1.0:
-        return A_prev, None
-
-    if keep_prob <= 0.0:
-        raise ValueError("keep_prob must be in (0, 1]")
-
-    rng = np.random.default_rng(seed)
-    mask = (rng.random(A_prev.shape) < keep_prob).astype(np.float32)
-    A = A_prev * mask / keep_prob
-    cache = (mask, keep_prob)
-    return A.astype(np.float32), cache

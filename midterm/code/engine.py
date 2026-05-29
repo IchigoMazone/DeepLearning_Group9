@@ -18,7 +18,7 @@ from midterm.code.metrics import (
     print_confusion_matrix,
     print_metrics_summary,
 )
-from midterm.code.optimizers import Adam
+from midterm.code.optimizers import GradientDescent
 from midterm.models.CNN import OptimizedCNN, model_forward
 
 
@@ -152,7 +152,7 @@ def train_model(
 
     model = OptimizedCNN(input_shape=(*image_size, X_train.shape[-1]), num_classes=num_classes, seed=seed)
     parameters = model.get_parameters()
-    optimizer = Adam(
+    optimizer = GradientDescent(
         parameters,
         learning_rate=learning_rate,
         weight_decay=weight_decay,
