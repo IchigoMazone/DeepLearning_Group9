@@ -21,20 +21,20 @@ CONFIG = {
     "num_classes": 5,
     "epochs": 80,
     "batch_size": 16,
-    "lr": 0.0007,
+    "lr": 0.003,
     "weight_decay": 1e-4,
     "clip_norm": 5.0,
     "augment": True,
     "normalize": False,
     "keep_aspect": True,
-    "dropout_keep_prob": 0.72,
+    "dropout_keep_prob": 0.85,
     "patience": 16,
     "report_interval": 4,
     "tta": True,
     "best_model": "midterm/outputs/best.pkl",
     "latest_model": "midterm/outputs/latest.pkl",
     "seed": 42,
-    "label_smoothing": 0.05,
+    "label_smoothing": 0.0,
 }
 
 
