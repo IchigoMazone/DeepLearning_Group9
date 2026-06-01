@@ -43,7 +43,21 @@ def resize_with_padding(image, size=(64, 64), fill_value=0):
     return canvas
 
 
-def load_image_numpy(path, size=(64, 64), normalize=False, keep_aspect=True):
+
+
+def add_structure_channels(image):
+    gray = cv2.cvtColor((np.clip(image, 0.0, 1.0) * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY)
+    gray_f = gray.astype(np.float32) / 255.0
+    sobel_x = cv2.Sobel(gray_f, cv2.CV_32F, 1, 0, ksize=3)
+    sobel_y = cv2.Sobel(gray_f, cv2.CV_32F, 0, 1, ksize=3)
+    edge = cv2.magnitude(sobel_x, sobel_y)
+    edge = edge / (float(edge.max()) + 1e-6)
+    return np.concatenate([image, gray_f[..., None], edge[..., None]], axis=2).astype(np.float32)
+
+def load_image_numpy(path, size=(64, 64), normalize=False, keep_aspect=True, add_structure=False):
+    if cv2 is None:
+        raise ImportError("opencv-python is required to load images. Install it with: pip install opencv-python")
+
     path = resolve_path(path)
     image_data = np.fromfile(path, dtype=np.uint8)
     image = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
@@ -57,12 +71,14 @@ def load_image_numpy(path, size=(64, 64), normalize=False, keep_aspect=True):
     else:
         image = cv2.resize(image, (size[1], size[0]), interpolation=cv2.INTER_AREA)
     image = image.astype(np.float32) / 255.0
+    if add_structure:
+        image = add_structure_channels(image)
     if normalize:
         image = (image - 0.5) / 0.5
     return image.astype(np.float32)
 
 
-def load_csv_dataset(csv_path, image_size=(64, 64), limit=None, normalize=False, keep_aspect=True):
+def load_csv_dataset(csv_path, image_size=(64, 64), limit=None, normalize=False, keep_aspect=True, add_structure=False):
     df = pd.read_csv(csv_path)
     df["resolved_path"] = df["image_path"].apply(resolve_path)
 
@@ -83,7 +99,7 @@ def load_csv_dataset(csv_path, image_size=(64, 64), limit=None, normalize=False,
         iterator = tqdm(iterator, desc=f"Loading {os.path.basename(csv_path)}")
 
     X = np.array([
-        load_image_numpy(path, image_size, normalize=normalize, keep_aspect=keep_aspect)
+        load_image_numpy(path, image_size, normalize=normalize, keep_aspect=keep_aspect, add_structure=add_structure)
         for path in iterator
     ], dtype=np.float32)
     y = df["label"].to_numpy(dtype=np.int64)
@@ -195,109 +211,73 @@ def augment_batch(X, seed=None):
         raise ImportError("opencv-python is required for data augmentation. Install it with: pip install opencv-python")
 
     rng = np.random.default_rng(seed)
-    X_aug = np.array(X, copy=True)
-    clip_min = -1.0 if np.min(X_aug) < 0.0 else 0.0
+    X_aug = np.array(X, copy=True).astype(np.float32)
+    base_channels = min(3, X_aug.shape[-1])
+    clip_min = -1.0 if np.min(X_aug[..., :base_channels]) < 0.0 else 0.0
+    clip_max = 1.0
 
     for i in range(len(X_aug)):
-        img = _as_cv_float32(X_aug[i])
+        img_full = X_aug[i]
+        img = img_full[..., :base_channels]
         orig_h, orig_w = img.shape[:2]
 
-        if rng.random() < 0.7:
-            scale = rng.uniform(0.82, 1.0)
+        if rng.random() < 0.65:
+            scale = rng.uniform(0.88, 1.0)
             crop_h = max(1, int(orig_h * scale))
             crop_w = max(1, int(orig_w * scale))
-            top = rng.integers(0, orig_h - crop_h + 1)
-            left = rng.integers(0, orig_w - crop_w + 1)
+            top = int(rng.integers(0, orig_h - crop_h + 1))
+            left = int(rng.integers(0, orig_w - crop_w + 1))
             img = img[top:top + crop_h, left:left + crop_w]
             img = cv2.resize(img, (orig_w, orig_h), interpolation=cv2.INTER_LINEAR)
-            img = _as_cv_float32(img)
 
         if rng.random() < 0.5:
-            img = _as_cv_float32(np.fliplr(img))
+            img = np.fliplr(img)
 
-        if rng.random() < 0.8:
-            alpha = rng.uniform(0.75, 1.25)
-            beta = rng.uniform(-0.12, 0.12)
-            img = _as_cv_float32(img * alpha + beta)
-
-        if rng.random() < 0.6:
+        if rng.random() < 0.55:
             h, w = img.shape[:2]
-            angle = rng.uniform(-25, 25)
-            transform = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
-            img = cv2.warpAffine(img, transform, (w, h), borderMode=cv2.BORDER_REFLECT)
-            img = _as_cv_float32(img)
-
-        if rng.random() < 0.5:
-            h, w = img.shape[:2]
-            zoom = rng.uniform(0.85, 1.15)
-            new_h, new_w = max(1, int(h * zoom)), max(1, int(w * zoom))
-            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-
-            if zoom >= 1.0:
-                start_h = (new_h - h) // 2
-                start_w = (new_w - w) // 2
-                img = img[start_h:start_h + h, start_w:start_w + w]
-            else:
-                pad_h = h - new_h
-                pad_w = w - new_w
-                top = pad_h // 2
-                bottom = pad_h - top
-                left = pad_w // 2
-                right = pad_w - left
-                img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_REFLECT)
-            img = _as_cv_float32(img)
-
-        if rng.random() < 0.4:
-            noise = rng.normal(0, 0.02, img.shape).astype(np.float32)
-            img = _as_cv_float32(img + noise)
-
-        if rng.random() < 0.45:
-            h, w = X_aug[i].shape[:2]
-            angle = rng.uniform(-10.0, 10.0)
-            scale = rng.uniform(0.92, 1.06)
-            tx = rng.uniform(-0.06, 0.06) * w
-            ty = rng.uniform(-0.06, 0.06) * h
+            angle = rng.uniform(-16.0, 16.0)
+            scale = rng.uniform(0.94, 1.06)
+            tx = rng.uniform(-0.04, 0.04) * w
+            ty = rng.uniform(-0.04, 0.04) * h
             matrix = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), angle, scale)
             matrix[0, 2] += tx
             matrix[1, 2] += ty
-            X_aug[i] = cv2.warpAffine(
-                X_aug[i],
+            img = cv2.warpAffine(
+                img,
                 matrix,
                 (w, h),
                 flags=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=(clip_min, clip_min, clip_min),
+                borderMode=cv2.BORDER_REFLECT,
             )
 
-        if rng.random() < 0.45:
-            h, w = X_aug[i].shape[:2]
-            angle = rng.uniform(-10.0, 10.0)
-            scale = rng.uniform(0.92, 1.06)
-            tx = rng.uniform(-0.06, 0.06) * w
-            ty = rng.uniform(-0.06, 0.06) * h
-            matrix = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), angle, scale)
-            matrix[0, 2] += tx
-            matrix[1, 2] += ty
-            X_aug[i] = cv2.warpAffine(
-                X_aug[i],
-                matrix,
-                (w, h),
-                flags=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=(clip_min, clip_min, clip_min),
-            )
-
-        if rng.random() < 0.5:
-            alpha = rng.uniform(0.85, 1.15)
+        if rng.random() < 0.7:
+            alpha = rng.uniform(0.82, 1.18)
             beta = rng.uniform(-0.08, 0.08)
-            X_aug[i] = np.clip(X_aug[i] * alpha + beta, clip_min, 1.0)
+            img = img * alpha + beta
 
-        if rng.random() < 0.25:
-            h, w = X_aug[i].shape[:2]
-            erase_h = int(rng.integers(max(1, h // 12), max(2, h // 5)))
-            erase_w = int(rng.integers(max(1, w // 12), max(2, w // 5)))
+        if rng.random() < 0.35:
+            noise = rng.normal(0, 0.018, img.shape).astype(np.float32)
+            img = img + noise
+
+        if rng.random() < 0.30:
+            hsv_ready = np.clip(img, 0.0, 1.0).astype(np.float32)
+            hsv = cv2.cvtColor(hsv_ready, cv2.COLOR_RGB2HSV)
+            hsv[..., 0] = (hsv[..., 0] + rng.uniform(-6.0, 6.0)) % 360.0
+            hsv[..., 1] = np.clip(hsv[..., 1] * rng.uniform(0.90, 1.12), 0.0, 1.0)
+            img = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+
+        if rng.random() < 0.15:
+            h, w = img.shape[:2]
+            erase_h = int(rng.integers(max(1, h // 14), max(2, h // 6)))
+            erase_w = int(rng.integers(max(1, w // 14), max(2, w // 6)))
             y0 = int(rng.integers(0, max(1, h - erase_h + 1)))
             x0 = int(rng.integers(0, max(1, w - erase_w + 1)))
-            X_aug[i, y0:y0 + erase_h, x0:x0 + erase_w, :] = clip_min
+            img[y0:y0 + erase_h, x0:x0 + erase_w, :] = clip_min
+
+        img = np.clip(img, clip_min, clip_max)
+        if X_aug.shape[-1] > 3:
+            X_aug[i] = add_structure_channels(img)
+        else:
+            X_aug[i] = img
 
     return X_aug.astype(np.float32, copy=False)

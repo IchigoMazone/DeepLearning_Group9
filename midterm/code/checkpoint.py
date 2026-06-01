@@ -3,13 +3,22 @@ import pickle
 from datetime import datetime
 
 
-def save_checkpoint(parameters, epoch, val_loss, val_acc, class_names, checkpoint_path, metadata=None):
+def save_checkpoint(
+    parameters,
+    epoch,
+    val_loss,
+    val_acc,
+    class_names,
+    checkpoint_path,
+    image_size=(64, 64),
+    num_classes=None,
+    metadata=None,
+):
     checkpoint_path = os.path.normpath(checkpoint_path)
     checkpoint_dir = os.path.dirname(checkpoint_path)
     if checkpoint_dir:
         os.makedirs(checkpoint_dir, exist_ok=True)
 
-    abs_path = os.path.abspath(checkpoint_path)
     checkpoint = {
         "parameters": parameters,
         "epoch": int(epoch),
@@ -17,15 +26,16 @@ def save_checkpoint(parameters, epoch, val_loss, val_acc, class_names, checkpoin
         "val_acc": float(val_acc),
         "class_names": class_names,
         "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "checkpoint_path": abs_path,
+        "checkpoint_path": os.path.abspath(checkpoint_path),
+        "image_size": tuple(image_size),
+        "num_classes": int(num_classes or (len(class_names) if class_names else 5)),
     }
     if metadata:
         checkpoint.update(metadata)
 
     with open(checkpoint_path, "wb") as f:
         pickle.dump(checkpoint, f)
-
-    return abs_path
+    return os.path.abspath(checkpoint_path)
 
 
 def load_checkpoint(checkpoint_path):

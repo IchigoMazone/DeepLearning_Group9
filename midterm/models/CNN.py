@@ -14,9 +14,8 @@ from midterm.code.layers import (
 
 
 class OptimizedCNN:
+    """Simple NumPy CNN: Conv-Pool x3 -> Flatten -> Dense -> Softmax."""
     """
-    CNN NumPy/CV2 cho bai toan phan loai trai cay.
-
     Kien truc:
     - Conv 5x5, 16 filters -> ReLU -> MaxPool 2x2
     - Conv 3x3, 32 filters -> ReLU -> MaxPool 2x2
@@ -29,19 +28,17 @@ class OptimizedCNN:
     def __init__(self, input_shape=(64, 64, 3), num_classes=10, seed=42):
         if len(input_shape) != 3:
             raise ValueError("input_shape must be (height, width, channels)")
-
         if input_shape[0] % 8 != 0 or input_shape[1] % 8 != 0:
             raise ValueError("height and width must be divisible by 8")
 
         self.input_shape = tuple(input_shape)
         self.num_classes = int(num_classes)
         self.seed = seed
-        self.feature_shape = (self.input_shape[0] // 8, self.input_shape[1] // 8, 64)
-        self.flatten_dim = int(np.prod(self.feature_shape))
         self.params = self._init_params()
 
     def _init_params(self):
-        _, _, channels = self.input_shape
+        height, width, channels = self.input_shape
+        flatten_dim = (height // 8) * (width // 8) * 64
         rng = np.random.default_rng(self.seed)
         return {
             "W1": he_init(rng, (5, 5, channels, 16), fan_in=5 * 5 * channels),
@@ -50,7 +47,7 @@ class OptimizedCNN:
             "b2": np.zeros((1, 1, 1, 32), dtype=np.float32),
             "W3": he_init(rng, (3, 3, 32, 64), fan_in=3 * 3 * 32),
             "b3": np.zeros((1, 1, 1, 64), dtype=np.float32),
-            "W4": he_init(rng, (self.flatten_dim, 128), fan_in=self.flatten_dim),
+            "W4": he_init(rng, (flatten_dim, 128), fan_in=flatten_dim),
             "b4": np.zeros((1, 128), dtype=np.float32),
             "W5": he_init(rng, (128, self.num_classes), fan_in=128),
             "b5": np.zeros((1, self.num_classes), dtype=np.float32),
@@ -68,7 +65,6 @@ class OptimizedCNN:
             raise ValueError(f"Expected input shape {self.input_shape}, got {X.shape[1:]}")
 
         caches = {}
-
         Z1, caches["conv1"] = conv_forward(X, self.params["W1"], self.params["b1"], stride=1, pad=2)
         A1 = relu(Z1)
         P1, caches["pool1"] = max_pool_forward(A1, f=2, stride=2)
@@ -93,19 +89,11 @@ class OptimizedCNN:
 
         Z5, caches["dense2"] = dense_forward(A4, self.params["W5"], self.params["b5"])
         AL = softmax(Z5)
-
-        caches.update({
-            "Z1": Z1,
-            "Z2": Z2,
-            "Z3": Z3,
-            "Z4": Z4,
-            "Z5": Z5,
-            "AL": AL,
-        })
+        caches.update({"Z1": Z1, "Z2": Z2, "Z3": Z3, "Z4": Z4, "Z5": Z5, "AL": AL})
         return AL, caches
 
     def predict(self, X):
-        AL, _ = self.forward(X)
+        AL, _ = self.forward(X, training=False)
         return np.argmax(AL, axis=1)
 
 
@@ -113,7 +101,7 @@ def model_forward(
     X,
     parameters,
     input_shape=(64, 64, 3),
-    num_classes=10,
+    num_classes=5,
     training=False,
     dropout_keep_prob=1.0,
     seed=None,
