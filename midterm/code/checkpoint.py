@@ -10,7 +10,7 @@ def save_checkpoint(
     val_acc,
     class_names,
     checkpoint_path,
-    image_size=(128, 128),
+    image_size=(64, 64),
     num_classes=None,
     metadata=None,
 ):

@@ -4,8 +4,7 @@ from midterm.code.layers import (
     conv_forward,
     dense_forward,
     dropout_forward,
-    global_avg_pool_forward,
-    global_max_pool_forward,
+    flatten_forward,
     he_init,
     max_pool_forward,
     relu,
@@ -15,13 +14,13 @@ from midterm.code.layers import (
 
 
 class OptimizedCNN:
-    """Small NumPy CNN tuned for the current 5-class fruit dataset."""
+    """Simple NumPy CNN: Conv-Pool x3 -> Flatten -> Dense -> Softmax."""
 
-    def __init__(self, input_shape=(128, 128, 3), num_classes=5, seed=42):
+    def __init__(self, input_shape=(64, 64, 3), num_classes=5, seed=42):
         if len(input_shape) != 3:
             raise ValueError("input_shape must be (height, width, channels)")
-        if input_shape[0] % 4 != 0 or input_shape[1] % 4 != 0:
-            raise ValueError("height and width must be divisible by 4")
+        if input_shape[0] % 8 != 0 or input_shape[1] % 8 != 0:
+            raise ValueError("height and width must be divisible by 8")
 
         self.input_shape = tuple(input_shape)
         self.num_classes = int(num_classes)
@@ -29,16 +28,17 @@ class OptimizedCNN:
         self.params = self._init_params()
 
     def _init_params(self):
-        _, _, channels = self.input_shape
+        height, width, channels = self.input_shape
+        flatten_dim = (height // 8) * (width // 8) * 64
         rng = np.random.default_rng(self.seed)
         return {
-            "W1": he_init(rng, (3, 3, channels, 32), fan_in=3 * 3 * channels),
-            "b1": np.zeros((1, 1, 1, 32), dtype=np.float32),
-            "W2": he_init(rng, (3, 3, 32, 64), fan_in=3 * 3 * 32),
-            "b2": np.zeros((1, 1, 1, 64), dtype=np.float32),
-            "W3": he_init(rng, (3, 3, 64, 128), fan_in=3 * 3 * 64),
-            "b3": np.zeros((1, 1, 1, 128), dtype=np.float32),
-            "W4": he_init(rng, (256, 128), fan_in=256),
+            "W1": he_init(rng, (5, 5, channels, 16), fan_in=5 * 5 * channels),
+            "b1": np.zeros((1, 1, 1, 16), dtype=np.float32),
+            "W2": he_init(rng, (3, 3, 16, 32), fan_in=3 * 3 * 16),
+            "b2": np.zeros((1, 1, 1, 32), dtype=np.float32),
+            "W3": he_init(rng, (3, 3, 32, 64), fan_in=3 * 3 * 32),
+            "b3": np.zeros((1, 1, 1, 64), dtype=np.float32),
+            "W4": he_init(rng, (flatten_dim, 128), fan_in=flatten_dim),
             "b4": np.zeros((1, 128), dtype=np.float32),
             "W5": he_init(rng, (128, self.num_classes), fan_in=128),
             "b5": np.zeros((1, self.num_classes), dtype=np.float32),
@@ -56,7 +56,7 @@ class OptimizedCNN:
             raise ValueError(f"Expected input shape {self.input_shape}, got {X.shape[1:]}")
 
         caches = {}
-        Z1, caches["conv1"] = conv_forward(X, self.params["W1"], self.params["b1"], stride=1, pad=1)
+        Z1, caches["conv1"] = conv_forward(X, self.params["W1"], self.params["b1"], stride=1, pad=2)
         A1 = relu(Z1)
         P1, caches["pool1"] = max_pool_forward(A1, f=2, stride=2)
 
@@ -66,12 +66,10 @@ class OptimizedCNN:
 
         Z3, caches["conv3"] = conv_forward(P2, self.params["W3"], self.params["b3"], stride=1, pad=1)
         A3 = relu(Z3)
+        P3, caches["pool3"] = max_pool_forward(A3, f=2, stride=2)
 
-        G_avg, caches["gap"] = global_avg_pool_forward(A3)
-        G_max, caches["gmp"] = global_max_pool_forward(A3)
-        G = np.concatenate([G_avg, G_max], axis=1).astype(np.float32, copy=False)
-
-        Z4, caches["dense1"] = dense_forward(G, self.params["W4"], self.params["b4"])
+        F, caches["flatten"] = flatten_forward(P3)
+        Z4, caches["dense1"] = dense_forward(F, self.params["W4"], self.params["b4"])
         A4 = relu(Z4)
         A4, caches["dropout1"] = dropout_forward(
             A4,
@@ -90,14 +88,14 @@ class OptimizedCNN:
         return np.argmax(AL, axis=1)
 
 
-def init_parameters(num_classes=5, input_shape=(128, 128, 3), seed=42):
+def init_parameters(num_classes=5, input_shape=(64, 64, 3), seed=42):
     return OptimizedCNN(input_shape=input_shape, num_classes=num_classes, seed=seed).get_parameters()
 
 
 def model_forward(
     X,
     parameters,
-    input_shape=(128, 128, 3),
+    input_shape=(64, 64, 3),
     num_classes=5,
     training=False,
     dropout_keep_prob=1.0,
@@ -108,7 +106,7 @@ def model_forward(
     return model.forward(X, training=training, dropout_keep_prob=dropout_keep_prob, seed=seed)
 
 
-def predict(X, parameters, input_shape=(128, 128, 3), num_classes=5):
+def predict(X, parameters, input_shape=(64, 64, 3), num_classes=5):
     model = OptimizedCNN(input_shape=input_shape, num_classes=num_classes)
     model.set_parameters(parameters)
     return model.predict(X)

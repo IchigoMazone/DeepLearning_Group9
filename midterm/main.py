@@ -16,8 +16,8 @@ CONFIG = {
     "train_csv": "midterm/datasets/cf/train.csv",
     "val_csv": "midterm/datasets/cf/val.csv",
     "test_csv": "midterm/datasets/cf/test.csv",
-    "target_size": (128, 128),
-    "input_channels": 5,
+    "target_size": (64, 64),
+    "input_channels": 3,
     "num_classes": 5,
     "epochs": 50,
     "batch_size": 16,
@@ -27,6 +27,7 @@ CONFIG = {
     "augment": True,
     "normalize": False,
     "keep_aspect": True,
+    "add_structure": False,
     "dropout_keep_prob": 0.85,
     "patience": 16,
     "report_interval": 4,
@@ -68,6 +69,7 @@ def run_train(args):
         seed=CONFIG["seed"],
         augment=CONFIG["augment"] and not args.no_augment,
         normalize=CONFIG["normalize"],
+        add_structure=CONFIG["add_structure"],
         dropout_keep_prob=CONFIG["dropout_keep_prob"],
         label_smoothing=CONFIG["label_smoothing"],
         weight_decay=CONFIG["weight_decay"],
@@ -97,6 +99,7 @@ def run_eval(resume_path=None):
         batch_size=CONFIG["batch_size"],
         normalize=checkpoint.get("normalize", CONFIG["normalize"]),
         keep_aspect=checkpoint.get("keep_aspect", CONFIG["keep_aspect"]),
+        add_structure=checkpoint.get("add_structure", CONFIG["add_structure"]),
         tta=CONFIG["tta"],
     )
 
@@ -117,6 +120,7 @@ def run_predict(resume_path=None, image_path=None):
         image_size,
         normalize=checkpoint.get("normalize", CONFIG["normalize"]),
         keep_aspect=checkpoint.get("keep_aspect", CONFIG["keep_aspect"]),
+        add_structure=checkpoint.get("add_structure", CONFIG["add_structure"]),
     )
     pred_idx, confidence = predict_image(
         image=image,
