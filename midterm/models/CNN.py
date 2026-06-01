@@ -15,8 +15,17 @@ from midterm.code.layers import (
 
 class OptimizedCNN:
     """Simple NumPy CNN: Conv-Pool x3 -> Flatten -> Dense -> Softmax."""
+    """
+    Kien truc:
+    - Conv 5x5, 16 filters -> ReLU -> MaxPool 2x2
+    - Conv 3x3, 32 filters -> ReLU -> MaxPool 2x2
+    - Conv 3x3, 64 filters -> ReLU -> MaxPool 2x2
+    - Flatten
+    - Dense 128 -> ReLU
+    - Dense num_classes -> Softmax
+    """
 
-    def __init__(self, input_shape=(64, 64, 3), num_classes=5, seed=42):
+    def __init__(self, input_shape=(64, 64, 3), num_classes=10, seed=42):
         if len(input_shape) != 3:
             raise ValueError("input_shape must be (height, width, channels)")
         if input_shape[0] % 8 != 0 or input_shape[1] % 8 != 0:
@@ -45,10 +54,10 @@ class OptimizedCNN:
         }
 
     def get_parameters(self):
-        return self.params
+        return {key: value.copy() for key, value in self.params.items()}
 
     def set_parameters(self, parameters):
-        self.params = parameters
+        self.params = {key: value.astype(np.float32, copy=True) for key, value in parameters.items()}
 
     def forward(self, X, training=False, dropout_keep_prob=1.0, seed=None):
         X = to_numpy_nhwc(X)
@@ -67,9 +76,9 @@ class OptimizedCNN:
         Z3, caches["conv3"] = conv_forward(P2, self.params["W3"], self.params["b3"], stride=1, pad=1)
         A3 = relu(Z3)
         P3, caches["pool3"] = max_pool_forward(A3, f=2, stride=2)
+        G, caches["flatten"] = flatten_forward(P3)
 
-        F, caches["flatten"] = flatten_forward(P3)
-        Z4, caches["dense1"] = dense_forward(F, self.params["W4"], self.params["b4"])
+        Z4, caches["dense1"] = dense_forward(G, self.params["W4"], self.params["b4"])
         A4 = relu(Z4)
         A4, caches["dropout1"] = dropout_forward(
             A4,
@@ -88,10 +97,6 @@ class OptimizedCNN:
         return np.argmax(AL, axis=1)
 
 
-def init_parameters(num_classes=5, input_shape=(64, 64, 3), seed=42):
-    return OptimizedCNN(input_shape=input_shape, num_classes=num_classes, seed=seed).get_parameters()
-
-
 def model_forward(
     X,
     parameters,
@@ -103,10 +108,9 @@ def model_forward(
 ):
     model = OptimizedCNN(input_shape=input_shape, num_classes=num_classes)
     model.set_parameters(parameters)
-    return model.forward(X, training=training, dropout_keep_prob=dropout_keep_prob, seed=seed)
-
-
-def predict(X, parameters, input_shape=(64, 64, 3), num_classes=5):
-    model = OptimizedCNN(input_shape=input_shape, num_classes=num_classes)
-    model.set_parameters(parameters)
-    return model.predict(X)
+    return model.forward(
+        X,
+        training=training,
+        dropout_keep_prob=dropout_keep_prob,
+        seed=seed,
+    )

@@ -42,14 +42,8 @@ def global_max_pool_backward(dA, cache):
 
 
 def max_pool_backward(dA, cache):
-    if len(cache) == 5:
-        A_prev, f, stride, A_out, fast_path = cache
-    else:
-        A_prev, f, stride = cache
-        A_out = None
-        fast_path = False
-
-    m, _, _, channels = A_prev.shape
+    A_prev, f, stride, A_out, fast_path = cache
+    m, _, _, _ = A_prev.shape
     _, h_out, w_out, _ = dA.shape
     dA_prev = np.zeros_like(A_prev, dtype=np.float32)
 
@@ -66,14 +60,14 @@ def max_pool_backward(dA, cache):
                 denom = np.sum(mask, axis=(0, 1), keepdims=True)
                 dA_prev[i, v0:v1, h0:h1, :] += mask * dA[i, h, w, :] / np.maximum(denom, 1)
 
-    return dA_prev
+    return dA_prev.astype(np.float32, copy=False)
 
 
 def conv_backward(dZ, cache):
-    if len(cache) == 5:
-        A_prev, W, stride, pad, X_col = cache
-    else:
-        A_prev, W, _, stride, pad, X_col = cache
+    A_prev, W, stride, pad, X_col = cache
+    m, _, _, C_prev = A_prev.shape
+    f, _, _, C_out = W.shape
+    _, H_out, W_out, _ = dZ.shape
 
     m, _, _, c_prev = A_prev.shape
     f, _, _, c_out = W.shape
@@ -102,7 +96,6 @@ def model_backward(AL, Y, caches):
 
     dP3 = flatten_backward(dF, caches["flatten"])
     dA3 = max_pool_backward(dP3, caches["pool3"])
-
     dZ3 = relu_backward(dA3, caches["Z3"])
     dP2, grads["dW3"], grads["db3"] = conv_backward(dZ3, caches["conv3"])
 

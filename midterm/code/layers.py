@@ -13,16 +13,6 @@ def relu_backward(dA, Z):
     return dZ
 
 
-def dropout_forward(A, keep_prob=1.0, training=False, seed=None):
-    if not training or keep_prob >= 1.0:
-        return A, None
-    if keep_prob <= 0.0:
-        raise ValueError("keep_prob must be in (0, 1]")
-
-    rng = np.random.default_rng(seed)
-    mask = (rng.random(A.shape) < keep_prob).astype(np.float32)
-    return (A * mask / keep_prob).astype(np.float32, copy=False), (mask, keep_prob)
-
 def dropout_backward(dA, cache):
     if cache is None:
         return dA
@@ -97,17 +87,6 @@ def max_pool_forward(A_prev, f=2, stride=2):
     return A, cache
 
 
-def global_avg_pool_forward(A_prev):
-    A = np.mean(A_prev, axis=(1, 2), dtype=np.float32)
-    return A.astype(np.float32, copy=False), A_prev.shape
-
-
-
-
-def global_max_pool_forward(A_prev):
-    A = np.max(A_prev, axis=(1, 2))
-    return A.astype(np.float32, copy=False), (A_prev, A)
-
 def flatten_forward(A_prev):
     A = A_prev.reshape(A_prev.shape[0], -1)
     cache = A_prev.shape
@@ -118,5 +97,17 @@ def dense_forward(A_prev, W, b):
     Z = np.dot(A_prev, W) + b
     cache = (A_prev, W, b)
     return Z, cache
+
+
+def dropout_forward(A_prev, keep_prob=1.0, seed=None, training=True):
+    if not training or keep_prob >= 1.0:
+        return A_prev, None
+    if keep_prob <= 0.0:
+        raise ValueError("keep_prob must be in (0, 1]")
+
+    rng = np.random.default_rng(seed)
+    mask = (rng.random(A_prev.shape) < keep_prob).astype(np.float32)
+    A = A_prev * mask / keep_prob
+    return A.astype(np.float32, copy=False), (mask, keep_prob)
 
 
