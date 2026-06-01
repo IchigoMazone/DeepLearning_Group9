@@ -1,7 +1,7 @@
 | true\pred | Fruits_Cucumber | Fruits_Grapes | Fruits_Kiwi | Fruits_Orange | Fruits_Pomegranate |
 | --- | --- | --- | --- | --- | --- |
-| Fruits_Cucumber | 39 | 6 | 9 | 5 | 1 |
-| Fruits_Grapes | 16 | 24 | 8 | 5 | 4 |
-| Fruits_Kiwi | 19 | 0 | 27 | 10 | 2 |
-| Fruits_Orange | 0 | 0 | 2 | 52 | 4 |
-| Fruits_Pomegranate | 4 | 1 | 3 | 11 | 40 |
+| Fruits_Cucumber | 37 | 8 | 11 | 3 | 1 |
+| Fruits_Grapes | 4 | 41 | 5 | 1 | 6 |
+| Fruits_Kiwi | 14 | 3 | 33 | 4 | 4 |
+| Fruits_Orange | 0 | 1 | 5 | 45 | 7 |
+| Fruits_Pomegranate | 2 | 3 | 4 | 2 | 48 |

@@ -8,8 +8,8 @@ import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MIDTERM_ROOT = PROJECT_ROOT / "midterm"
-DATASET_CSV = MIDTERM_ROOT / "datasets" / "dataset.csv"
-CHECKPOINT_PATH = MIDTERM_ROOT / "outputs" / "best.pkl"
+DATASET_CSV = MIDTERM_ROOT / "datasets" / "dataset_5.csv"
+CHECKPOINT_PATH = MIDTERM_ROOT / "outputs" / "best_cf5_numpy.pkl"
 COLLECT_DIR = Path(__file__).resolve().parent / "new_dataset"
 
 sys.path.append(str(PROJECT_ROOT))
@@ -73,7 +73,7 @@ def add_structure_channels(image):
     edge = edge / (float(edge.max()) + 1e-6)
     return np.concatenate([image, gray_f[..., None], edge[..., None]], axis=2).astype(np.float32)
 
-def frame_to_model_input(frame_bgr, image_size, normalize=False, keep_aspect=True, add_structure=True):
+def frame_to_model_input(frame_bgr, image_size, normalize=False, keep_aspect=True, add_structure=False):
     if keep_aspect:
         frame_bgr = resize_with_padding_bgr(frame_bgr, image_size)
     else:
@@ -129,12 +129,13 @@ def run_webcam(camera_index=0):
     ensure_collect_dirs(label_map)
 
     checkpoint = load_checkpoint(str(CHECKPOINT_PATH))
-    image_size = tuple(checkpoint.get("image_size", (128, 128)))
+    image_size = tuple(checkpoint.get("image_size", (64, 64)))
     num_classes = int(checkpoint.get("num_classes", len(label_map)))
     class_names = checkpoint.get("class_names") or [label_map.get(i, str(i)) for i in range(num_classes)]
     parameters = checkpoint["parameters"]
     normalize = checkpoint.get("normalize", False)
     keep_aspect = checkpoint.get("keep_aspect", True)
+    add_structure = checkpoint.get("add_structure", False)
 
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
@@ -157,9 +158,16 @@ def run_webcam(camera_index=0):
                 print("Failed to grab frame")
                 break
 
+            raw_frame = frame.copy()
             now = time.time()
             if now - last_predict_at >= PREDICT_EVERY_SECONDS:
-                image = frame_to_model_input(frame, image_size, normalize=normalize, keep_aspect=keep_aspect, add_structure=checkpoint.get("input_channels", 5) > 3)
+                image = frame_to_model_input(
+                    raw_frame,
+                    image_size,
+                    normalize=normalize,
+                    keep_aspect=keep_aspect,
+                    add_structure=add_structure,
+                )
                 pred_idx, confidence = predict_image(
                     image=image,
                     parameters=parameters,
@@ -184,7 +192,7 @@ def run_webcam(camera_index=0):
                 label = key - ord("0")
                 if label in label_map:
                     image_path = next_image_path(label)
-                    cv2.imwrite(str(image_path), frame)
+                    cv2.imwrite(str(image_path), raw_frame)
                     saved_text = f"Saved label {label} -> {image_path.name}"
                     saved_until = time.time() + 1.5
                     print(saved_text)
