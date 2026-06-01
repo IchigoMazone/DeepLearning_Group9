@@ -26,17 +26,12 @@ def dropout_backward(dA, cache):
     return (dA * mask / keep_prob).astype(np.float32)
 
 
-def global_avg_pool_backward(dA, cache):
-    m, H, W, C = cache
-    return np.ones((m, H, W, C), dtype=np.float32) * dA[:, None, None, :] / (H * W)
-
-
 def flatten_backward(dA, cache):
     return dA.reshape(cache).astype(np.float32)
 
 
 def max_pool_backward(dA, cache):
-    A_prev, f, stride = cache
+    A_prev, f, stride = cache[:3]
     m, _, _, C_prev = A_prev.shape
     _, H, W, _ = dA.shape
     dA_prev = np.zeros_like(A_prev, dtype=np.float32)
@@ -59,7 +54,7 @@ def max_pool_backward(dA, cache):
 
 
 def conv_backward(dZ, cache):
-    A_prev, W, _, stride, pad, X_col = cache
+    A_prev, W, stride, pad, X_col = cache
     m, _, _, C_prev = A_prev.shape
     f, _, _, C_out = W.shape
     _, H_out, W_out, _ = dZ.shape
@@ -94,12 +89,8 @@ def model_backward(AL, Y, caches):
     dZ4 = relu_backward(dA4, caches["Z4"])
     dG, grads["dW4"], grads["db4"] = dense_backward(dZ4, caches["dense1"])
 
-    if "flatten" in caches:
-        dA3 = flatten_backward(dG, caches["flatten"])
-        if "pool3" in caches:
-            dA3 = max_pool_backward(dA3, caches["pool3"])
-    else:
-        dA3 = global_avg_pool_backward(dG, caches["gap"])
+    dA3 = flatten_backward(dG, caches["flatten"])
+    dA3 = max_pool_backward(dA3, caches["pool3"])
     dZ3 = relu_backward(dA3, caches["Z3"])
     dP2, grads["dW3"], grads["db3"] = conv_backward(dZ3, caches["conv3"])
 

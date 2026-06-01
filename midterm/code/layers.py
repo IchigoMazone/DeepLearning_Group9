@@ -13,18 +13,6 @@ def relu_backward(dA, Z):
     return dZ
 
 
-def dropout_forward(A, dropout_rate=0.0, training=False, seed=None):
-    if not training or dropout_rate <= 0.0:
-        return A, None
-    if dropout_rate >= 1.0:
-        raise ValueError("dropout_rate must be less than 1.0")
-
-    rng = np.random.default_rng(seed)
-    keep_prob = 1.0 - dropout_rate
-    mask = (rng.random(A.shape) < keep_prob).astype(np.float32)
-    return (A * mask / keep_prob).astype(np.float32, copy=False), (mask, keep_prob)
-
-
 def dropout_backward(dA, cache):
     if cache is None:
         return dA
@@ -97,11 +85,6 @@ def max_pool_forward(A_prev, f=2, stride=2):
 
     cache = (A_prev, f, stride, A, False)
     return A, cache
-
-
-def global_avg_pool_forward(A_prev):
-    A = np.mean(A_prev, axis=(1, 2), dtype=np.float32)
-    return A.astype(np.float32, copy=False), A_prev.shape
 
 
 def flatten_forward(A_prev):

@@ -34,6 +34,8 @@ CONFIG = {
     "patience": 10,
     "report_interval": 5,
     "keep_aspect": True,
+    "seed": 42,
+    "tta": True,
     "best_model": "midterm/outputs/best_cf5_numpy.pkl",
     "latest_model": "midterm/outputs/latest_cf5_numpy.pkl",
 }
@@ -76,9 +78,11 @@ def run_train(args):
         dropout_keep_prob=CONFIG["dropout_keep_prob"],
         weight_decay=CONFIG["weight_decay"],
         patience=CONFIG["patience"],
+        checkpoint_path=args.output or CONFIG["best_model"],
         latest_checkpoint_path=CONFIG["latest_model"],
         report_interval=CONFIG["report_interval"],
         keep_aspect=CONFIG["keep_aspect"],
+        seed=CONFIG["seed"],
     )
 
 
@@ -93,8 +97,8 @@ def run_eval(resume_path=None):
     evaluate_csv(
         test_csv=test_csv,
         parameters=checkpoint["parameters"],
-        num_classes=CONFIG["num_classes"],
-        image_size=CONFIG["target_size"],
+        num_classes=num_classes,
+        image_size=image_size,
         normalize=checkpoint.get("normalize", False),
         keep_aspect=checkpoint.get("keep_aspect", CONFIG["keep_aspect"]),
     )
@@ -112,12 +116,11 @@ def run_predict(resume_path=None, image_path=None):
     class_names = checkpoint.get("class_names")
     image = load_image_numpy(
         image_path,
-        CONFIG["target_size"],
+        image_size,
         normalize=checkpoint.get("normalize", False),
         keep_aspect=checkpoint.get("keep_aspect", CONFIG["keep_aspect"]),
     )
 
-    image = load_image_numpy(image_path, image_size)
     pred_idx, confidence = predict_image(
         image=image,
         parameters=checkpoint["parameters"],
@@ -139,19 +142,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--output", type=str, default=None, help="Output checkpoint path")
-    parser.add_argument("--augment", action="store_true", help="Enable augmentation during training")
-    parser.add_argument("--no-augment", action="store_true")
-    parser.add_argument(
-        "--param-log-interval",
-        default=0,
-        help="'epoch' to print W/b after every epoch, 0 to disable, or an integer update interval",
-    )
     args = parser.parse_args()
-
-    if str(args.param_log_interval).isdigit():
-        args.param_log_interval = int(args.param_log_interval)
-    elif str(args.param_log_interval).lower() in {"0", "none", "false", "off"}:
-        args.param_log_interval = 0
 
     if args.mode == "split":
         train_csv, val_csv, test_csv = ensure_split_csv()

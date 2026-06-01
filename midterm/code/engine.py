@@ -1,4 +1,6 @@
 import os
+import math
+import time
 
 import numpy as np
 
@@ -9,7 +11,7 @@ except ImportError:
 
 from midterm.code.backward import model_backward
 from midterm.code.checkpoint import save_checkpoint
-from midterm.code.data import augment_batch, create_batches, load_csv_dataset, one_hot
+from midterm.code.data import augment_batch, create_batches, load_csv_dataset, make_tta_batch, one_hot
 from midterm.code.metrics import (
     classification_metrics,
     compute_accuracy,
@@ -19,19 +21,12 @@ from midterm.code.metrics import (
     print_metrics_summary,
 )
 from midterm.code.optimizers import Adam
-from midterm.models.CNN import OptimizedCNN, model_forward, predict
+from midterm.models.CNN import OptimizedCNN, model_forward
 
 
-def summarize_weights_biases(parameters):
-    parts = []
-    for key in sorted(parameters):
-        value = parameters[key]
-        kind = "W" if key.startswith("W") else "b"
-        parts.append(
-            f"{key}({kind}): mean={value.mean():+.4e}, std={value.std():.4e}, "
-            f"min={value.min():+.4e}, max={value.max():+.4e}"
-        )
-    return "\n".join(parts)
+def compute_top_k_accuracy(AL, y_true, k=3):
+    top_k = np.argsort(AL, axis=1)[:, -k:]
+    return float(np.mean([int(label) in top_k[i] for i, label in enumerate(y_true)]))
 
 
 def evaluate_arrays(X, y, parameters, image_size=(96, 96), num_classes=10, batch_size=32, tta=False):
@@ -69,7 +64,7 @@ def evaluate_arrays(X, y, parameters, image_size=(96, 96), num_classes=10, batch
     return loss, acc, top3
 
 
-def evaluate_metrics(X, y, parameters, image_size=(64, 64), num_classes=10):
+def evaluate_metrics(X, y, parameters, image_size=(64, 64), num_classes=10, batch_size=32):
     pred, AL = predict_arrays(X, parameters, image_size=image_size, num_classes=num_classes)
     loss = compute_loss(AL, one_hot(y, num_classes))
     metrics = classification_metrics(y, pred, num_classes)
@@ -84,12 +79,6 @@ def predict_arrays(X, parameters, image_size=(64, 64), num_classes=10):
         num_classes=num_classes,
     )
     return np.argmax(AL, axis=1), AL
-
-
-def print_per_class_report(y_true, y_pred, class_names=None, num_classes=10):
-    metrics = classification_metrics(y_true, y_pred, num_classes)
-    print_classification_report(metrics, class_names=class_names)
-
 
 def train_model(
     train_csv,
@@ -144,6 +133,7 @@ def train_model(
     best_val_f1 = -1.0
     best_epoch = 0
     epochs_without_improvement = 0
+    update_count = 0
     history = []
 
     if latest_checkpoint_path is None:
@@ -159,7 +149,7 @@ def train_model(
         lr_now = learning_rate * 0.5 * (1.0 + math.cos(math.pi * (epoch - 1) / max(epochs, 1)))
         optimizer.set_learning_rate(lr_now)
 
-        batch_iter = create_batches(X_train, y_train_one_hot, batch_size, seed=seed + epoch)
+        batch_iter = create_batches(X_train, Y_train, batch_size, seed=seed + epoch)
         if tqdm is not None:
             batch_iter = tqdm(batch_iter, total=steps, desc=f"Epoch {epoch:03d}/{epochs}")
 
@@ -182,11 +172,7 @@ def train_model(
             update_count += 1
             total_loss += loss * len(X_batch)
 
-            if isinstance(param_log_interval, int) and param_log_interval > 0:
-                if update_count % param_log_interval == 0:
-                    print(f"\nUpdate {update_count:05d} W/b summary")
-                    print(summarize_weights_biases(parameters))
-
+        train_loss = total_loss / len(X_train)
         sample_size = min(train_acc_sample, len(X_train))
         train_loss_eval, train_metrics, _ = evaluate_metrics(
             X_train[:sample_size],
@@ -372,6 +358,6 @@ def predict_image(image, parameters, input_shape=(96, 96, 3), num_classes=10, tt
         pred_idx = int(np.argmax(AL, axis=1)[0])
     else:
         AL, _ = model_forward(X, parameters, input_shape=input_shape, num_classes=num_classes)
-        pred_idx = int(predict(X, parameters, input_shape=input_shape, num_classes=num_classes)[0])
+        pred_idx = int(np.argmax(AL, axis=1)[0])
     confidence = float(np.max(AL))
     return pred_idx, confidence
