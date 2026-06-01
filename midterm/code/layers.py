@@ -99,3 +99,15 @@ def dense_forward(A_prev, W, b):
     return Z, cache
 
 
+def dropout_forward(A_prev, keep_prob=1.0, seed=None, training=True):
+    if not training or keep_prob >= 1.0:
+        return A_prev, None
+    if keep_prob <= 0.0:
+        raise ValueError("keep_prob must be in (0, 1]")
+
+    rng = np.random.default_rng(seed)
+    mask = (rng.random(A_prev.shape) < keep_prob).astype(np.float32)
+    A = A_prev * mask / keep_prob
+    return A.astype(np.float32, copy=False), (mask, keep_prob)
+
+

@@ -1,8 +1,14 @@
+import json
 import os
 import math
 import time
 
 import numpy as np
+import pandas as pd
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 try:
     from tqdm import tqdm
@@ -19,13 +25,46 @@ from midterm.code.metrics import (
     print_confusion_matrix,
     print_metrics_summary,
 )
-from midterm.code.optimizers import Adam
+from midterm.code.optimizers import GradientDescent
 from midterm.models.CNN import OptimizedCNN, model_forward
+
+
+def infer_num_classes(*label_arrays):
+    max_label = max(int(np.max(labels)) for labels in label_arrays if len(labels))
+    return max_label + 1
 
 
 def compute_top_k_accuracy(AL, y_true, k=3):
     top_k = np.argsort(AL, axis=1)[:, -k:]
     return float(np.mean([int(label) in top_k[i] for i, label in enumerate(y_true)]))
+
+
+def to_jsonable(value):
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, (np.integer, np.floating)):
+        return value.item()
+    if isinstance(value, dict):
+        return {key: to_jsonable(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [to_jsonable(item) for item in value]
+    return value
+
+
+def ensure_report_dir(report_dir):
+    if report_dir:
+        os.makedirs(report_dir, exist_ok=True)
+    return report_dir
+
+
+def write_markdown_table(df, path):
+    columns = list(df.columns)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("| " + " | ".join(columns) + " |\n")
+        f.write("| " + " | ".join(["---"] * len(columns)) + " |\n")
+        for _, row in df.iterrows():
+            values = [str(row[column]) for column in columns]
+            f.write("| " + " | ".join(values) + " |\n")
 
 
 def predict_arrays(X, parameters, image_size=(64, 64), num_classes=5, tta=False):
@@ -73,26 +112,113 @@ def evaluate_metrics(X, y, parameters, image_size=(64, 64), num_classes=5, batch
     y_pred = np.concatenate(preds, axis=0)
     AL = np.concatenate(probs, axis=0)
     loss = float(np.sum(losses) / len(X))
-    acc = compute_accuracy(pred_all, y)
-    top3 = compute_top_k_accuracy(AL_all, y, k=min(3, num_classes))
-    return loss, acc, top3
+    metrics = classification_metrics(y, y_pred, num_classes)
+    metrics["top3_accuracy"] = compute_top_k_accuracy(AL, y, k=min(3, num_classes))
+    return loss, metrics, y_pred, AL
 
 
-def evaluate_metrics(X, y, parameters, image_size=(64, 64), num_classes=10, batch_size=32):
-    pred, AL = predict_arrays(X, parameters, image_size=image_size, num_classes=num_classes)
-    loss = compute_loss(AL, one_hot(y, num_classes))
-    metrics = classification_metrics(y, pred, num_classes)
-    return loss, metrics, pred
+def export_history_artifacts(history, report_dir):
+    report_dir = ensure_report_dir(report_dir)
+    if not report_dir or not history:
+        return
+
+    history_df = pd.DataFrame(history)
+    history_csv = os.path.join(report_dir, "history.csv")
+    history_json = os.path.join(report_dir, "history.json")
+    curves_png = os.path.join(report_dir, "accuracy_loss_curves.png")
+
+    history_df.to_csv(history_csv, index=False)
+    with open(history_json, "w", encoding="utf-8") as f:
+        json.dump(to_jsonable(history), f, indent=2, ensure_ascii=False)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    axes[0].plot(history_df["epoch"], history_df["train_loss"], label="Train loss")
+    axes[0].plot(history_df["epoch"], history_df["val_loss"], label="Val loss")
+    axes[0].set_title("Loss")
+    axes[0].set_xlabel("Epoch")
+    axes[0].set_ylabel("Loss")
+    axes[0].grid(True, alpha=0.3)
+    axes[0].legend()
+
+    axes[1].plot(history_df["epoch"], history_df["train_acc_sample"], label="Train acc sample")
+    axes[1].plot(history_df["epoch"], history_df["val_acc"], label="Val acc")
+    axes[1].set_title("Accuracy")
+    axes[1].set_xlabel("Epoch")
+    axes[1].set_ylabel("Accuracy")
+    axes[1].grid(True, alpha=0.3)
+    axes[1].legend()
+
+    fig.tight_layout()
+    fig.savefig(curves_png, dpi=160)
+    plt.close(fig)
 
 
-def predict_arrays(X, parameters, image_size=(64, 64), num_classes=10):
-    AL, _ = model_forward(
-        X,
-        parameters,
-        input_shape=(image_size[0], image_size[1], 3),
-        num_classes=num_classes,
-    )
-    return np.argmax(AL, axis=1), AL
+def export_evaluation_artifacts(prefix, loss, metrics, class_names, report_dir):
+    report_dir = ensure_report_dir(report_dir)
+    if not report_dir:
+        return
+
+    summary = {
+        "loss": float(loss),
+        "accuracy": float(metrics["accuracy"]),
+        "macro_precision": float(metrics["macro_precision"]),
+        "macro_recall": float(metrics["macro_recall"]),
+        "macro_f1": float(metrics["macro_f1"]),
+        "weighted_f1": float(metrics["weighted_f1"]),
+        "top3_accuracy": float(metrics.get("top3_accuracy", 0.0)),
+    }
+
+    summary_df = pd.DataFrame([
+        {"metric": key, "value": value}
+        for key, value in summary.items()
+    ])
+    summary_df.to_csv(os.path.join(report_dir, f"{prefix}_metrics_table.csv"), index=False)
+    with open(os.path.join(report_dir, f"{prefix}_metrics_table.json"), "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2, ensure_ascii=False)
+    write_markdown_table(summary_df, os.path.join(report_dir, f"{prefix}_metrics_table.md"))
+
+    rows = []
+    for item in metrics["per_class"]:
+        label = item["label"]
+        class_name = class_names[label] if class_names and label < len(class_names) else str(label)
+        rows.append({
+            "label": label,
+            "class_name": class_name,
+            "precision": item["precision"],
+            "recall": item["recall"],
+            "f1": item["f1"],
+            "support": item["support"],
+        })
+    report_df = pd.DataFrame(rows)
+    report_df.to_csv(os.path.join(report_dir, f"{prefix}_classification_report.csv"), index=False)
+    write_markdown_table(report_df, os.path.join(report_dir, f"{prefix}_classification_report.md"))
+
+    matrix = metrics["confusion_matrix"]
+    labels = [
+        class_names[i] if class_names and i < len(class_names) else str(i)
+        for i in range(matrix.shape[0])
+    ]
+    matrix_df = pd.DataFrame(matrix, index=labels, columns=labels)
+    matrix_df.to_csv(os.path.join(report_dir, f"{prefix}_confusion_matrix.csv"))
+    matrix_md = matrix_df.reset_index().rename(columns={"index": "true\\pred"})
+    write_markdown_table(matrix_md, os.path.join(report_dir, f"{prefix}_confusion_matrix.md"))
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+    im = ax.imshow(matrix, cmap="Blues")
+    ax.set_title(f"{prefix.title()} Confusion Matrix")
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("True")
+    ax.set_xticks(np.arange(len(labels)))
+    ax.set_yticks(np.arange(len(labels)))
+    ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.set_yticklabels(labels)
+    for i in range(matrix.shape[0]):
+        for j in range(matrix.shape[1]):
+            ax.text(j, i, int(matrix[i, j]), ha="center", va="center", color="black")
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    fig.tight_layout()
+    fig.savefig(os.path.join(report_dir, f"{prefix}_confusion_matrix.png"), dpi=160)
+    plt.close(fig)
 
 def train_model(
     train_csv,
@@ -117,6 +243,7 @@ def train_model(
     add_structure=False,
     limit=None,
     checkpoint_path="midterm/outputs/best.pkl",
+    report_dir="midterm/outputs/reports",
     param_log_interval=0,
     monitor="val_macro_f1",
     dropout_rate=None,
@@ -177,7 +304,6 @@ def train_model(
     best_val_f1 = -1.0
     best_epoch = 0
     epochs_without_improvement = 0
-    update_count = 0
     history = []
     update_count = 0
 
@@ -188,7 +314,7 @@ def train_model(
         lr_now = learning_rate * 0.5 * (1.0 + math.cos(math.pi * (epoch - 1) / max(epochs, 1)))
         optimizer.set_learning_rate(lr_now)
 
-        batch_iter = create_batches(X_train, Y_train, batch_size, seed=seed + epoch)
+        batch_iter = create_batches(X_train, y_train_one_hot, batch_size, seed=seed + epoch)
         if tqdm is not None:
             batch_iter = tqdm(batch_iter, total=steps, desc=f"Epoch {epoch:03d}/{epochs}")
 
@@ -213,7 +339,7 @@ def train_model(
 
         train_loss = total_loss / len(X_train)
         sample_size = min(train_acc_sample, len(X_train))
-        train_loss_eval, train_metrics, _ = evaluate_metrics(
+        train_eval_loss, train_metrics, _, _ = evaluate_metrics(
             X_train[:sample_size],
             y_train[:sample_size],
             parameters,
@@ -222,7 +348,7 @@ def train_model(
             batch_size=batch_size,
             tta=False,
         )
-        val_loss, val_metrics, val_pred, _ = evaluate_metrics(
+        val_loss, val_metrics, _, _ = evaluate_metrics(
             X_val,
             y_val,
             parameters,
@@ -274,6 +400,7 @@ def train_model(
             "val_weighted_f1": float(val_metrics["weighted_f1"]),
         }
         history.append(epoch_metrics)
+        export_history_artifacts(history, report_dir)
 
         metadata = {
             "image_size": tuple(image_size),
@@ -336,6 +463,7 @@ def train_model(
                 f"Val Acc: {best_val_acc * 100:.2f}% | Val Macro F1: {best_val_f1 * 100:.2f}%"
             )
             print_classification_report(val_metrics, class_names=class_names)
+            export_evaluation_artifacts("val", val_loss, val_metrics, class_names, report_dir)
         else:
             epochs_without_improvement += 1
             if patience and epochs_without_improvement >= patience:
@@ -363,6 +491,7 @@ def evaluate_csv(
     keep_aspect=True,
     add_structure=False,
     tta=True,
+    report_dir="midterm/outputs/reports",
 ):
     X_test, y_test, class_names = load_csv_dataset(
         test_csv,
@@ -383,6 +512,7 @@ def evaluate_csv(
     print_metrics_summary("Test", loss, metrics)
     print_classification_report(metrics, class_names=class_names)
     print_confusion_matrix(metrics, class_names=class_names)
+    export_evaluation_artifacts("test", loss, metrics, class_names, report_dir)
     return loss, metrics["accuracy"]
 
 
