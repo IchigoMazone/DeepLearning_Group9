@@ -39,7 +39,7 @@ def summarize_weights_biases(parameters):
     return "\n".join(parts)
 
 
-def predict_arrays(X, parameters, image_size=(128, 128), num_classes=5, tta=False):
+def predict_arrays(X, parameters, image_size=(64, 64), num_classes=5, tta=False):
     if tta:
         probs = []
         for X_variant in make_tta_batch(X):
@@ -61,7 +61,7 @@ def predict_arrays(X, parameters, image_size=(128, 128), num_classes=5, tta=Fals
     return np.argmax(AL, axis=1), AL
 
 
-def evaluate_metrics(X, y, parameters, image_size=(128, 128), num_classes=5, batch_size=16, tta=False):
+def evaluate_metrics(X, y, parameters, image_size=(64, 64), num_classes=5, batch_size=16, tta=False):
     losses = []
     preds = []
     probs = []
@@ -95,7 +95,7 @@ def train_model(
     epochs=50,
     batch_size=16,
     learning_rate=0.005,
-    image_size=(128, 128),
+    image_size=(64, 64),
     seed=42,
     augment=True,
     normalize=False,
@@ -108,6 +108,7 @@ def train_model(
     latest_checkpoint_path=None,
     report_interval=4,
     keep_aspect=True,
+    add_structure=False,
     limit=None,
     checkpoint_path="midterm/outputs/best.pkl",
     param_log_interval=0,
@@ -128,7 +129,7 @@ def train_model(
         limit=limit,
         normalize=normalize,
         keep_aspect=keep_aspect,
-        add_structure=True,
+        add_structure=add_structure,
     )
     X_val, y_val, _ = load_csv_dataset(
         val_csv,
@@ -136,7 +137,7 @@ def train_model(
         limit=limit,
         normalize=normalize,
         keep_aspect=keep_aspect,
-        add_structure=True,
+        add_structure=add_structure,
     )
 
     inferred_classes = infer_num_classes(y_train, y_val)
@@ -276,7 +277,8 @@ def train_model(
             "num_classes": num_classes,
             "normalize": normalize,
             "keep_aspect": keep_aspect,
-            "architecture": "rgb-gray-edge-conv32-conv64-conv128-avgmaxpool-dense128",
+            "add_structure": add_structure,
+            "architecture": "rgb-conv5x5-16-pool-conv3x3-32-pool-conv3x3-64-pool-flatten-dense128",
             "input_channels": int(X_train.shape[-1]),
             "dropout_keep_prob": dropout_keep_prob,
             "weight_decay": weight_decay,
@@ -352,10 +354,11 @@ def evaluate_csv(
     test_csv,
     parameters,
     num_classes=5,
-    image_size=(128, 128),
+    image_size=(64, 64),
     batch_size=16,
     normalize=False,
     keep_aspect=True,
+    add_structure=False,
     tta=True,
 ):
     X_test, y_test, class_names = load_csv_dataset(
@@ -363,7 +366,7 @@ def evaluate_csv(
         image_size=image_size,
         normalize=normalize,
         keep_aspect=keep_aspect,
-        add_structure=True,
+        add_structure=add_structure,
     )
     loss, metrics, _, _ = evaluate_metrics(
         X_test,
@@ -380,7 +383,7 @@ def evaluate_csv(
     return loss, metrics["accuracy"]
 
 
-def predict_image(image, parameters, input_shape=(128, 128, 3), num_classes=5, tta=True):
+def predict_image(image, parameters, input_shape=(64, 64, 3), num_classes=5, tta=True):
     X = image[np.newaxis, ...].astype(np.float32, copy=False)
     pred, AL = predict_arrays(
         X,

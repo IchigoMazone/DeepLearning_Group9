@@ -54,7 +54,10 @@ def add_structure_channels(image):
     edge = edge / (float(edge.max()) + 1e-6)
     return np.concatenate([image, gray_f[..., None], edge[..., None]], axis=2).astype(np.float32)
 
-def load_image_numpy(path, size=(64, 64), normalize=False, keep_aspect=True, add_structure=True):
+def load_image_numpy(path, size=(64, 64), normalize=False, keep_aspect=True, add_structure=False):
+    if cv2 is None:
+        raise ImportError("opencv-python is required to load images. Install it with: pip install opencv-python")
+
     path = resolve_path(path)
     image_data = np.fromfile(path, dtype=np.uint8)
     image = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
@@ -75,7 +78,7 @@ def load_image_numpy(path, size=(64, 64), normalize=False, keep_aspect=True, add
     return image.astype(np.float32)
 
 
-def load_csv_dataset(csv_path, image_size=(64, 64), limit=None, normalize=False, keep_aspect=True, add_structure=True):
+def load_csv_dataset(csv_path, image_size=(64, 64), limit=None, normalize=False, keep_aspect=True, add_structure=False):
     df = pd.read_csv(csv_path)
     df["resolved_path"] = df["image_path"].apply(resolve_path)
 
